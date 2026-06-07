@@ -1,6 +1,6 @@
-# [MSFM-T240_v250] T250_Trigger 기능 규격서
+# [MSFM_T2_v250] T250_Trigger 기능 규격서
 
-본 문서는 **MSFM-T240_v250** 임베디드 펌웨어의 다차원 물리 지표 진단 엔진인 `T250_Trigger` (Trigger Engine) 모듈에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 다차원 물리 지표 진단 엔진인 `T250_Trigger` (Trigger Engine) 모듈에 대한 기능 규격서입니다.
 
 ---
 

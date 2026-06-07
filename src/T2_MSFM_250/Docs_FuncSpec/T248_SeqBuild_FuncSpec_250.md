@@ -1,6 +1,6 @@
-# [MSFM-T240_v250] T248_SeqBuild 기능 규격서
+# [MSFM_T2_v250] T248_SeqBuild 기능 규격서
 
-본 문서는 **MSFM-T240_v250** 임베디드 펌웨어의 AI 추론용 입력 데이터 정합 파이프라인 모듈인 `T248_SeqBuild` (Sequence Builder & Time Aligner)에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 AI 추론용 입력 데이터 정합 파이프라인 모듈인 `T248_SeqBuild` (Sequence Builder & Time Aligner)에 대한 기능 규격서입니다.
 
 ---
 

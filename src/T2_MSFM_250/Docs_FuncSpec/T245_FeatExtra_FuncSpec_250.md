@@ -1,6 +1,6 @@
-# [MSFM-T240_v250] T245_FeatExtra 기능 규격서
+# [MSFM_T2_v250] T245_FeatExtra 기능 규격서
 
-본 문서는 **MSFM-T240_v250** 임베디드 펌웨어의 멀티모달(진동/소음) 융합 특징 추출엔진인 `T245_FeatExtra` (Feature Extractor) 모듈에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 멀티모달(진동/소음) 융합 특징 추출엔진인 `T245_FeatExtra` (Feature Extractor) 모듈에 대한 기능 규격서입니다.
 
 ---
 

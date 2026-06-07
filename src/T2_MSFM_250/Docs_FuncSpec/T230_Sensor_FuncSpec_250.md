@@ -1,6 +1,6 @@
-# [MSFM-T240_v250] T230_Sensor 기능 규격서
+# [MSFM_T2_v250] T230_Sensor 기능 규격서
 
-본 문서는 **MSFM-T240_v250** 임베디드 펌웨어의 멀티모달 센서 데이터 수집엔진인 `T230_Sensor` (Sensor Engine) 모듈에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 멀티모달 센서 데이터 수집엔진인 `T230_Sensor` (Sensor Engine) 모듈에 대한 기능 규격서입니다.
 
 ---
 
