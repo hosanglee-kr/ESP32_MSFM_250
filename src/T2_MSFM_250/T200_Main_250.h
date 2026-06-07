@@ -43,7 +43,7 @@ inline void T2_init() {
     Serial.begin(115200);
     
     vTaskDelay(pdMS_TO_TICKS(100));
-    Serial.println("\n[SMEA-T2] 4-Tier Diagnostic System Booting...");
+    Serial.println("\n[MSFM_T2] 4-Tier Diagnostic System Booting...");
 
     // 2. 하드웨어 핀 설정 및 초기 인터럽트 동기화
     pinMode(T2_Def::Global::Hardware::PIN_BTN_CONTROL_CONST, INPUT_PULLDOWN);
