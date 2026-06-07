@@ -1,0 +1,136 @@
+; PlatformIO Project Configuration File
+; ESP32-S3 프로젝트 통합 설정 (N16R8, Zero/Super Mini 대응)
+
+[platformio]
+	default_envs 			= esp32-s3-n16r8
+	data_dir 				= ./src/T2_MSFM_240/244/data
+	; data_dir 				= ./src/T2_MSFM_240/242/data
+	; data_dir 				= ./src/T4_MC_001/013/data
+	build_cache_dir         = ./.pio/build_cache
+[common]
+	platform = espressif32
+	framework = arduino
+	monitor_speed = 115200
+	board_build.filesystem = littlefs
+	; 파티션 설정 (16MB 플래시인 경우에 맞춰 조정 필요할 수 있음)
+	; board_build.partitions = min_spiffs.csv
+
+	lib_deps =
+	    FS
+	    SD_MMC
+	    SPI
+
+		; bblanchon/ArduinoJson @ ^7.4.3
+	    ; esp32async/ESPAsyncWebServer @ ^3.11.0
+		; ESP32Async/AsyncTCP @ ^3.4.10
+		; ESP32Async/ESPAsyncTCP @ ^2.0.0
+		; ayushsharma82/RPAsyncTCP @ ^1.3.2
+	    ; sparkfun/SparkFun BMI270 Arduino Library @ ^1.0.3
+	    ; martinbudden/VectorQuaternionMatrix @ ^0.4.10
+	    ; martinbudden/SensorFusion @ ^0.2.14
+
+	    ;https://github.com/espressif/esp-dsp.git#v1.8.2
+
+	lib_extra_dirs =
+		Lib
+
+	lib_ignore =
+		RPAsyncTCP
+
+	lib_ldf_mode = deep+
+	lib_archive = no
+
+	; 공통 빌드 플래그 (C++17 강제 및 esp-dsp 설정)
+	build_unflags =
+	    -std=gnu++11
+	    -std=c++11
+
+	build_flags =
+	    -std=gnu++17
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=1 ; 빌드 시 clangd용 인텔리센스 맵을 자동으로 생성하도록 유도하는 빌드 플래그
+
+	    -D CONFIG_DSP_OPTIMIZED=1
+	    -D CONFIG_DSP_OPTIMIZATION=1
+	    -D CONFIG_DSP_MAX_FFT_SIZE=4096  ; Kconfig의 default 값 반영
+	    -D CONFIG_DSP_OPTIMIZATION_AES3=y
+	    -D CONFIG_IDF_TARGET_ESP32S3=1
+	    -D SOC_SDMMC_HOST_SUPPORTED
+
+	    ; esp-dsp 헤더 경로
+	    -I lib/esp-dsp/modules/common/include
+	    -I lib/esp-dsp/modules/fft/include
+	    ; -I lib/esp-dsp/modules/filter/include
+	    -I lib/esp-dsp/modules/dotprod/include
+	    -I lib/esp-dsp/modules/dotprod/float
+	    -I lib/esp-dsp/modules/dotprod/fixed
+	    -I lib/esp-dsp/modules/math/include
+	    -I lib/esp-dsp/modules/math/add/include
+	    -I lib/esp-dsp/modules/matrix/include
+	    -I lib/esp-dsp/modules/iir/include
+	    -I lib/esp-dsp/modules/fir/include
+	    -I lib/esp-dsp/modules/conv/include
+	    -I lib/esp-dsp/modules/conv/float
+	    -I lib/esp-dsp/modules/support/include
+
+
+	; 필터 설정
+	build_src_filter =
+	    -<*>
+	    +<main.cpp>
+	    +<T2_MSFM_240/244/>
+	    ;-<T2_MSFM_240/242/>
+	    +<T4_MC_013/013/>
+
+	; 스크립트 공통 적용
+	extra_scripts =
+	    pre:shared/get_version.py
+	    ; pre:shared/setup_esp_dsp.py
+
+# ---------------------------------------------------
+# 1. 기존 Dev Kit (S3 기본형)
+# ---------------------------------------------------
+; [env:esp32-s3-devkitm-1]
+;	extends = common
+;	board = esp32-s3-devkitm-1
+;	data_dir = ./src/T4_MC_001/003/data
+
+# ---------------------------------------------------
+# 2. ESP32-S3 N16R8 (16MB Flash / 8MB PSRAM)
+# ---------------------------------------------------
+[env:esp32-s3-n16r8]
+	extends = common
+	board = esp32-s3-devkitm-1 ; 기본 S3 보드 정의 사용
+	board_build.partitions = default_16MB.csv
+
+
+	; 보드 상세 사양 강제 지정 (16MB Flash / OPI PSRAM)
+	board_build.arduino.memory_type = opi_opi
+	board_build.f_flash = 80000000L
+	board_build.f_cpu = 240000000L
+	board_upload.flash_size = 16MB
+
+	build_flags =
+	    ${common.build_flags}
+	    -D BOARD_HAS_PSRAM
+	    ; 16MB 플래시에 적합한 파티션 테이블 사용 권장 (default_16MB.csv 등)
+	    -D ARDUINO_USB_MODE=1
+	    -D ARDUINO_USB_CDC_ON_BOOT=1
+
+# ---------------------------------------------------
+# 3. ESP32-S3 Zero (Super Mini, 2MB PSRAM)
+# ---------------------------------------------------
+[env:esp32-s3-zero]
+	extends = common
+	board = esp32-s3-devkitm-1
+	board_build.partitions = default.csv  ; min_spiffs.csv
+
+	; Super Mini 특성상 칩 내부/외부 PSRAM 타입에 맞춰 설정 (보통 qio_qio 또는 qio_opi)
+	board_build.arduino.memory_type = qio_qio
+	board_upload.flash_size = 4MB ; Zero 보드는 대개 4MB Flash임
+
+	build_flags =
+	    ${common.build_flags}
+	    -D BOARD_HAS_PSRAM
+	    ; Super Mini는 USB CDC 설정을 켜야 시리얼 모니터가 잡히는 경우가 많음
+	    -D ARDUINO_USB_MODE=1
+	    -D ARDUINO_USB_CDC_ON_BOOT=1

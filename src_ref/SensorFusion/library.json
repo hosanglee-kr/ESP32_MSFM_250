@@ -1,0 +1,24 @@
+{
+    "name": "SensorFusion",
+    "description": "Sensor Fusion Filters for Attitude and Heading Reference Systems (AHRS)",
+    "keywords": "Sensor Fusion Filter Mahony Madgwick IMU AHRS",
+    "authors": {
+        "name": "Martin Budden",
+        "url": "https://github.com/martinbudden"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/martinbudden/Library-SensorFusion.git"
+    },
+    "dependencies": [
+        {
+            "name": "martinbudden/VectorQuaternionMatrix",
+            "version": "^0.4.10"
+        }
+    ],
+    "license": "MIT",
+    "version": "0.2.14",
+    "frameworks": "*",
+    "platforms": "*",
+    "headers": "SensorFusion.h"
+}

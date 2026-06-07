@@ -1,0 +1,47 @@
+{
+  "workspace_dir": ".",
+  "wiki_out_dir": "src/T2_MSFM_250_wiki",
+  "venv": {
+    "dir": ".venv",
+    "requirements": ["graphifyy", "networkx"]
+  },
+  "components": {
+    "T2_MSFM_250": "src/T2_MSFM_250",
+    "esp-dsp": "lib/esp-dsp",
+    "SparkFun_BMI270": "lib/SparkFun BMI270 Arduino Library"
+  },
+  "filters": {
+    "esp-dsp": {
+      "extensions": [".h", ".hpp", ".md"]
+    },
+    "SparkFun_BMI270": {
+      "extensions": [".h", ".hpp", ".md"]
+    }
+  },
+  "folders_to_clean": [
+    "src/T2_MSFM_250/graphify-out",
+    "lib/esp-dsp/graphify-out",
+    "lib/SensorFusion/graphify-out",
+    "lib/SparkFun BMI270 Arduino Library/graphify-out",
+    "lib/VectorQuaternionMatrix/graphify-out"
+  ],
+  "codegraph": {
+    "db_path": ".codegraph/codegraph.db",
+    "remove_patterns": [
+      {
+        "prefix": "lib/esp-dsp/",
+        "exclude_extensions": [".h", ".hpp", ".md"]
+      },
+      {
+        "prefix": "lib/SparkFun BMI270 Arduino Library/",
+        "exclude_extensions": [".h", ".hpp", ".md"]
+      },
+      {
+        "contains": "SensorFusion"
+      },
+      {
+        "contains": "VectorQuaternionMatrix"
+      }
+    ]
+  }
+}

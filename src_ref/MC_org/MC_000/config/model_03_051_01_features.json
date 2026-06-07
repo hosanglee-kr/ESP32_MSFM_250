@@ -1,0 +1,16 @@
+{
+    "feature_names": [
+        "FTUR_CPSR_MAX_N1",
+        "FTUR_CPSR_MAX_N2",
+        "FTUR_CPSR_MAX_N3",
+        "FTUR_CPSR_MAX_N4",
+        "FTUR_CPSR_MXRMS_N1",
+        "FTUR_CPSR_MXRMS_N2",
+        "FTUR_CPSR_MXRMS_N3",
+        "FTUR_CPSR_MXRMS_N4",
+        "FTUR_RMS",
+        "FTUR_SPTR_1000_3000_RMS",
+        "FTUR_SPTR_3000_6000_RMS",
+        "FTUR_SPTR_6000_9000_RMS"
+    ]
+}

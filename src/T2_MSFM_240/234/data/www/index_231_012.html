@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Micro Edge AI 231 v011 Control Center</title>
+    <link rel="stylesheet" href="style_231_012.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <div class="logo">T20 MFCC <span>v231.011 Edge AI</span></div>
+        <div id="status-tag" class="tag offline">OFFLINE</div>
+    </header>
+
+    <nav class="tab-bar">
+        <button class="tab-btn active" onclick="showTab('tab-dash', event)">Dashboard</button>
+        <button class="tab-btn" onclick="showTab('tab-dsp', event)">DSP & Trigger</button>
+        <button class="tab-btn" onclick="showTab('tab-output', event)">Output</button>
+        <button class="tab-btn" onclick="showTab('tab-sysadmin', event)">System Admin</button>
+        <button class="tab-btn" onclick="showTab('tab-manual', event)">Manual</button>
+        <button class="tab-btn" onclick="showTab('tab-diag', event)">Diagnostics</button>
+    </nav>
+
+    <main class="container">
+        <section id="tab-dash" class="tab-content active">
+            <div class="toolbar">
+                <button id="btn-start" class="btn primary">START</button>
+                <button id="btn-stop" class="btn danger">STOP</button>
+                <button id="btn-learn" class="btn warning">NOISE LEARN</button>
+                <button type="button" id="btn-calibrate" class="btn warning">CALIBRATE</button>
+                <div class="mini-stat">
+                    Drop: <span id="val-dropped" style="margin-left:5px; margin-right:10px;">0</span> |
+                    Hash: <span id="val-samples" style="margin-left:5px;">0</span>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="chart-container" style="height: 280px;"><canvas id="chart-waveform"></canvas></div>
+                <div class="chart-container" style="height: 280px;"><canvas id="chart-spectrum"></canvas></div>
+                <div class="chart-container" style="height: 280px;"><canvas id="chart-mfcc"></canvas></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin: 15px 0 5px 0;">
+                <h4 style="margin: 0; color: #888;">Time-Series Waterfalls (Main Target Axis)</h4>
+                <span style="font-size: 11px; color: #666;">Y-axis: Time (Latest at Top) &nbsp;|&nbsp; X-axis: Bins/Coeffs</span>
+            </div>
+            <div class="grid">
+                <div class="chart-container" style="height: 300px; display: flex; flex-direction: column;">
+                    <span style="font-size: 11px; font-weight: bold; color: #ccc; margin-bottom: 4px;">Power Spectrum (Scale: 0.0 ~ 15.0)</span>
+                    <canvas id="chart-waterfall-spec" style="flex: 1;"></canvas>
+                </div>
+                <div class="chart-container" style="height: 300px; display: flex; flex-direction: column; gap: 5px; background: transparent; border: none; padding: 0;">
+                    <div class="sub-chart-box"><span style="color: #4caf50;">Static MFCC (Scale: -20 ~ 20)</span><canvas id="chart-waterfall-mfcc-static"></canvas></div>
+                    <div class="sub-chart-box"><span style="color: #ff9800;">Delta MFCC (Scale: -5 ~ 5)</span><canvas id="chart-waterfall-mfcc-delta"></canvas></div>
+                    <div class="sub-chart-box"><span style="color: #f44336;">Delta-Delta MFCC (Scale: -2 ~ 2)</span><canvas id="chart-waterfall-mfcc-deltadelta"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-dsp" class="tab-content">
+            <form id="form-dsp">
+                <div class="grid">
+                    <div class="card">
+                        <h3 class="section-title">Sensor & Basic Pre-process</h3>
+                        <div class="form-group">
+                            <label>Operation Mode</label>
+                            <select name="system.op_mode">
+                                <option value="0">0: Manual (Web)</option>
+                                <option value="1">1: Auto (Boot)</option>
+                                <option value="2">2: Schedule</option>
+                            </select>
+                        </div>
+                        <div class="form-group highlight"><label>DSP Axis Mode</label><select name="feature.axis_count"><option value="1">1-Axis (Single)</option><option value="3">3-Axis (X+Y+Z)</option></select></div>
+                        <div class="form-group"><label>Main Target Axis</label><select name="sensor.axis"><option value="0">Accel X</option><option value="1">Accel Y</option><option value="2">Accel Z</option><option value="3">Gyro X</option><option value="4">Gyro Y</option><option value="5">Gyro Z</option></select></div>
+                        <div class="form-group"><label>Accel Range</label><select name="sensor.accel_range"><option value="0">± 2G</option><option value="1">± 4G</option><option value="2">± 8G</option><option value="3">± 16G</option></select></div>
+                        <div class="form-group"><label>Gyro Range</label><select name="sensor.gyro_range"><option value="0">125 dps</option><option value="1">250 dps</option><option value="2">500 dps</option><option value="3">1000 dps</option><option value="4">2000 dps</option></select></div>
+                        
+                        <h4 class="sub-title">Initial Pipeline</h4>
+                        <div class="form-group highlight"><label>Median Filter (Spike)</label><select name="dsp.median.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Median Window Size</label><input type="number" name="dsp.median.window_size" placeholder="3 or 5"></div>
+                        <div class="form-group"><label>Remove DC Offset</label><select name="dsp.remove_dc"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title">Cascaded IIR/FIR & Notch Filters</h3>
+                        <h4 class="sub-title">1. High-Pass Filter (Remove Low-freq)</h4>
+                        <div class="form-group"><label>Enable IIR HPF</label><select name="dsp.iir_hpf.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>IIR Cutoff (Hz)</label><input type="number" step="0.1" name="dsp.iir_hpf.cutoff_hz"></div>
+                        <div class="form-group"><label>IIR Q-Factor</label><input type="number" step="0.001" name="dsp.iir_hpf.q_factor"></div>
+                        <div class="form-group highlight"><label>Enable FIR HPF</label><select name="dsp.fir_hpf.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>FIR Cutoff (Hz)</label><input type="number" step="0.1" name="dsp.fir_hpf.cutoff_hz"></div>
+                        <div class="form-group"><label>FIR Taps (Odd)</label><input type="number" name="dsp.fir_hpf.num_taps"></div>
+
+                        <h4 class="sub-title">2. Low-Pass Filter (Remove High-freq)</h4>
+                        <div class="form-group"><label>Enable IIR LPF</label><select name="dsp.iir_lpf.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>IIR Cutoff (Hz)</label><input type="number" step="0.1" name="dsp.iir_lpf.cutoff_hz"></div>
+                        <div class="form-group"><label>IIR Q-Factor</label><input type="number" step="0.001" name="dsp.iir_lpf.q_factor"></div>
+                        <div class="form-group highlight"><label>Enable FIR LPF</label><select name="dsp.fir_lpf.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>FIR Cutoff (Hz)</label><input type="number" step="0.1" name="dsp.fir_lpf.cutoff_hz"></div>
+                        <div class="form-group"><label>FIR Taps (Odd)</label><input type="number" name="dsp.fir_lpf.num_taps"></div>
+
+                        <h4 class="sub-title">3. Adaptive Notch Filter (Remove Tone)</h4>
+                        <div class="form-group highlight"><label>Enable Notch</label><select name="dsp.notch.enabled"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Target Freq (Hz)</label><input type="number" step="0.1" name="dsp.notch.target_freq_hz"></div>
+                        <div class="form-group"><label>Gain</label><input type="number" step="0.1" name="dsp.notch.gain"></div>
+                        <div class="form-group"><label>Q-Factor</label><input type="number" step="0.1" name="dsp.notch.q_factor"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title">Noise Suppression & MFCC</h3>
+                        <div class="form-group"><label>Pre-emphasis Filter</label><select name="dsp.preemphasis.enable"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Emphasis Alpha</label><input type="number" step="0.01" name="dsp.preemphasis.alpha"></div>
+                        <div class="form-group"><label>Noise Gate</label><select name="dsp.noise.enable_gate"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Gate Thresh (Abs)</label><input type="number" step="0.001" name="dsp.noise.gate_threshold_abs"></div>
+                        <div class="form-group"><label>Spectral Subtract</label><select name="dsp.noise.mode"><option value="0">OFF</option><option value="1">FIXED</option><option value="2">ADAPTIVE</option></select></div>
+                        <div class="form-group"><label>Subtract Strength</label><input type="number" step="0.1" name="dsp.noise.spectral_subtract_strength"></div>
+                        
+                        <h4 class="sub-title">FFT & Feature Config</h4>
+                        <div class="form-group highlight"><label>Window Function</label><select name="dsp.window_type"><option value="0">Hann</option><option value="1">Hamming</option><option value="2">Blackman</option><option value="3">Flat-Top</option><option value="4">Rectangular</option></select></div>
+                        <div class="form-group"><label>FFT Size</label><select name="feature.fft_size"><option value="256">256</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option></select></div>
+                        <div class="form-group"><label>Hop Size</label><input type="number" name="feature.hop_size"></div>
+                        <div class="form-group"><label>MFCC Coeffs</label><input type="number" name="feature.mfcc_coeffs" min="1" max="32"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title" style="color: #ff9800;">Smart Trigger Policies</h3>
+                        <h4 class="sub-title" style="color: #ff9800;">1. Hardware Any-Motion</h4>
+                        <div class="form-group"><label>Deep Sleep Idle</label><select name="trigger.hw_power.use_deep_sleep"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Sleep Timeout (s)</label><input type="number" name="trigger.hw_power.sleep_timeout_sec"></div>
+                        <div class="form-group"><label>Wake Thresh (G)</label><input type="number" step="0.1" name="trigger.hw_power.wake_threshold_g"></div>
+
+                        <h4 class="sub-title" style="color: #4caf50;">2. Global RMS</h4>
+                        <div class="form-group"><label>Record Hold (ms)</label><input type="number" name="trigger.sw_event.hold_time_ms"></div>
+                        <div class="form-group"><label>Enable RMS</label><select name="trigger.sw_event.use_rms"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>RMS Thresh (G)</label><input type="number" step="0.01" name="trigger.sw_event.rms_threshold_power"></div>
+
+                        <h4 class="sub-title" style="color: #03a9f4;">3. Multi-Band Energy</h4>
+                        <div class="form-group highlight"><label>Band 1 Enable</label><select name="band_0_enable"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Freq Range</label><div class="range-inputs"><input type="number" name="band_0_start"> <span>-</span> <input type="number" name="band_0_end"></div></div>
+                        <div class="form-group"><label>Energy Thresh</label><input type="number" step="0.1" name="band_0_thresh"></div>
+                        <div class="form-group highlight"><label>Band 2 Enable</label><select name="band_1_enable"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Freq Range</label><div class="range-inputs"><input type="number" name="band_1_start"> <span>-</span> <input type="number" name="band_1_end"></div></div>
+                        <div class="form-group"><label>Energy Thresh</label><input type="number" step="0.1" name="band_1_thresh"></div>
+                        <div class="form-group highlight"><label>Band 3 Enable</label><select name="band_2_enable"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Freq Range</label><div class="range-inputs"><input type="number" name="band_2_start"> <span>-</span> <input type="number" name="band_2_end"></div></div>
+                        <div class="form-group"><label>Energy Thresh</label><input type="number" step="0.1" name="band_2_thresh"></div>
+                    </div>
+                </div>
+                <div class="action-bar"><button type="button" onclick="saveSettings()" class="btn primary">SAVE DSP & TRIGGER SETTINGS</button></div>
+            </form>
+        </section>
+
+        <section id="tab-output" class="tab-content">
+            <form id="form-output">
+                <div class="grid">
+                    <div class="card">
+                        <h3 class="section-title">SD_MMC Logging & Output Config</h3>
+                        <div class="form-group"><label>Payload Format</label><select name="output.output_sequence"><option value="false">Single Frame (UI)</option><option value="true">Tensor (TinyML)</option></select></div>
+                        <div class="form-group"><label>Tensor Pack Frames</label><input type="number" name="output.sequence_frames"></div>
+                        <div class="form-group"><label>Save Raw Waveform</label><select name="storage.save_raw"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Rotation (MB)</label><input type="number" name="storage.rotation_mb"></div>
+                        <div class="form-group"><label>Rotation (Min)</label><input type="number" name="storage.rotation_min"></div>
+                        <div class="form-group highlight"><label>Pre-Trigger (Sec)</label><input type="number" name="storage.pre_trigger_sec" placeholder="ex) 4"></div>
+                    </div>
+                    
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <div class="toolbar" style="margin-bottom: 10px;">
+                            <h3 class="section-title" style="margin:0; border:none; padding:0;">SD_MMC File Explorer</h3>
+                            <button type="button" onclick="refreshFileList()" class="btn" style="margin-left:auto;">Refresh</button>
+                        </div>
+                        <table>
+                            <thead><tr><th>File Name</th><th>Size</th><th>Records</th><th>Action</th></tr></thead>
+                            <tbody id="file-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="action-bar"><button type="button" onclick="saveSettings()" class="btn primary">SAVE OUTPUT CONFIG</button></div>
+            </form>
+        </section>
+
+        <section id="tab-sysadmin" class="tab-content">
+            <form id="form-sysadmin">
+                <div class="grid">
+                    <div class="card">
+                        <h3 class="section-title">Device Control</h3>
+                        <div class="form-group"><label>Control Button GPIO</label><input type="number" name="system.button_pin"></div>
+                        <div class="form-group"><label>Stall Watchdog (ms)</label><input type="number" name="system.watchdog_ms"></div>
+                        <div class="btn-group">
+                            <button type="button" onclick="rebootDevice()" class="btn danger" style="flex:1;">REBOOT DEVICE</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title">Config Backup & Restore</h3>
+                        <p style="font-size: 0.85em; color: #aaa; margin-bottom: 15px;">현재 기기의 설정을 다운로드하거나, 저장된 JSON 파일로 복원합니다.</p>
+                        <div class="btn-group" style="flex-direction: row; gap: 10px;">
+                            <button type="button" onclick="downloadConfig()" class="btn primary" style="flex:1;">DOWNLOAD CONFIG</button>
+                            <input type="file" id="config-file" accept=".json" style="display:none;" onchange="uploadConfig(event)">
+                            <button type="button" onclick="document.getElementById('config-file').click()" class="btn warning" style="flex:1;">UPLOAD CONFIG</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title">Wi-Fi Connection Mode</h3>
+                        <div class="form-group">
+                            <label>Operation Mode</label>
+                            <select name="wifi.mode" id="wifi_mode" onchange="toggleWifiFields()">
+                                <option value="0">Station (STA) Only</option>
+                                <option value="1">Access Point (AP) Only</option>
+                                <option value="2">AP + STA (Concurrent)</option>
+                                <option value="3">Auto Fallback</option>
+                            </select>
+                        </div>
+                        <div id="section_ap_config" class="config-box">
+                            <h4 class="sub-title">Soft-AP Settings</h4>
+                            <div class="form-group"><label>SSID</label><input type="text" name="wifi.ap_ssid"></div>
+                            <div class="form-group"><label>Password</label><input type="password" name="wifi.ap_password"></div>
+                            <div class="form-group"><label>AP IP (Custom)</label><input type="text" name="wifi.ap_ip"></div>
+                        </div>
+                        <div id="section_sta_config" class="config-box">
+                            <h4 class="sub-title">Target Routers (WiFi Multi)</h4>
+                            <div id="routers_container"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="section-title">MQTT Cloud Connectivity</h3>
+                        <div class="form-group highlight"><label>Enable MQTT</label><select name="mqtt.enable"><option value="false">OFF</option><option value="true">ON</option></select></div>
+                        <div class="form-group"><label>Broker URL</label><input type="text" name="mqtt.broker" placeholder="broker.hivemq.com"></div>
+                        <div class="form-group"><label>Port</label><input type="number" name="mqtt.port"></div>
+                        <div class="form-group"><label>Client ID</label><input type="text" name="mqtt.id"></div>
+                        <div class="form-group"><label>Password</label><input type="password" name="mqtt.password" placeholder="Optional"></div>
+                        <div class="form-group"><label>Topic Root</label><input type="text" name="mqtt.topic_root"></div>
+                    </div>
+
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <h3 class="section-title">Firmware OTA Update (v231)</h3>
+                        <p style="font-size: 0.85em; color: #aaa; margin-bottom: 15px;">Upload a new <code>.bin</code> firmware file to update the ESP32-S3 over the air.</p>
+                        <div class="form-group highlight ota-row">
+                            <input type="file" id="ota-file" accept=".bin" class="ota-input">
+                            <button type="button" onclick="uploadOTA()" class="btn warning">UPLOAD & FLASH</button>
+                        </div>
+                        <div id="ota-progress" style="display:none; color: var(--accent); font-weight: bold; text-align: left; margin-top: 15px;">Uploading: 0%</div>
+                    </div>
+                </div>
+                <div class="action-bar"><button type="button" onclick="saveSettings()" class="btn primary">SAVE SYSTEM ADMIN CONFIG</button></div>
+            </form>
+        </section>
+
+        <section id="tab-manual" class="tab-content">
+            <div class="card" style="padding: 0; overflow: hidden; height: 75vh; background: #fff;">
+                <iframe src="configGuide_231_012.html" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </section>
+
+        <section id="tab-diag" class="tab-content">
+            <div class="grid">
+                <div class="card"><h3>System Health</h3><pre id="diag-health" class="log-box"></pre></div>
+                <div class="card"><h3>Sensor Stats</h3><pre id="diag-sensor" class="log-box"></pre></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+    <script src="app_231_012.js"></script>
+</body>
+</html>

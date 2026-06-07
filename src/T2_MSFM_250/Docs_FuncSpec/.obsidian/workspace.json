@@ -1,0 +1,198 @@
+{
+  "main": {
+    "id": "d8e03e2bd88bfa31",
+    "type": "split",
+    "children": [
+      {
+        "id": "4f7f7c45caea72ed",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "29040179263c9263",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "functional_flowchart.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "functional_flowchart"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "55511f50c3626d80",
+    "type": "split",
+    "children": [
+      {
+        "id": "5c12436ae3533038",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5150bcc76bf485aa",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "파일 탐색기"
+            }
+          },
+          {
+            "id": "91b8330233e62e59",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "검색"
+            }
+          },
+          {
+            "id": "c8fb83bed002ad26",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "북마크"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "b59de2d014ff5b23",
+    "type": "split",
+    "children": [
+      {
+        "id": "e9132be1d3391ebf",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "df2cda031345f095",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "functional_flowchart.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "functional_flowchart 의 백링크"
+            }
+          },
+          {
+            "id": "fdf86a36ba36b794",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "functional_flowchart.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "functional_flowchart 의 나가는 링크"
+            }
+          },
+          {
+            "id": "27361875c5292b25",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "태그"
+            }
+          },
+          {
+            "id": "a1bdc2bf50a32503",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "모든 속성"
+            }
+          },
+          {
+            "id": "0d20a55924f00d3a",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "functional_flowchart.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "functional_flowchart 의 개요"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:빠른 전환기 열기": false,
+      "graph:그래프 뷰 열기": false,
+      "canvas:새 캔버스 만들기": false,
+      "daily-notes:오늘의 일일 노트 열기": false,
+      "templates:템플릿 삽입": false,
+      "command-palette:명령어 팔레트 열기": false,
+      "bases:새 베이스 생성하기": false
+    }
+  },
+  "active": "29040179263c9263",
+  "lastOpenFiles": [
+    "T2_Overall_FuncSpec_250.md",
+    "functional_flowchart.md",
+    "T248_SeqBuild_FuncSpec_250.md",
+    "T246_MelGen_FuncSpec_250.md",
+    "T216_RingBuf_FuncSpec_250.md",
+    "T215_Type_FuncSpec_250.md",
+    "T210_Def_FuncSpec_250.md",
+    "T200_Main_FuncSpec_250.md",
+    "T220_CfgMgr_FuncSpec_250.md"
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "system": {
+    "site_id": "FACTORY_A_LINE_1",
+    "tele_hz": 10,
+    "wave_hz": 0,
+    "op_mode": 1,
+    "watchdog_ms": 2000
+  },
+  "wifi": {
+    "mode": 3,
+    "ap_ssid": "SMEA_T2_MSFM_250_AP",
+    "ap_pw": "12345678",
+    "ap_ip": "192.168.4.1",
+    "multi_ap": [
+      { "ssid": "", "pw": "" },
+      { "ssid": "", "pw": "" },
+      { "ssid": "", "pw": "" }
+    ],
+    "disconnect_delay_ms": 100
+  },
+  "mqtt": {
+    "enable": false,
+    "broker": "",
+    "port": 1883,
+    "id": "T2_MSFM_250_Edge",
+    "pw": "",
+    "topic_root": "smea/T2_MSFM_250",
+    "lwt_topic": "smea/T2_MSFM_250/lwt",
+    "qos": 1,
+    "proto_ver": 4
+  },
+  "ntp": {
+    "ntp_server1": "pool.ntp.org",
+    "ntp_server2": "time.google.com",
+    "ntp_tz": "KST-9"
+  },
+  "storage": {
+    "rot_mb": 10,
+    "rot_min": 60,
+    "save_raw": false,
+    "keep_max": 8,
+    "idle_flush_ms": 250,
+    "pre_trig_sec": 3
+  },
+  "output": {
+    "enabled": true,
+    "output_sequence": false,
+    "sequence_frames": 16
+  },
+  "decision": {
+    "max_trial_count": 3,
+    "sta_lta_threshold": 3.0,
+    "min_trigger_count": 1,
+    "valid_start_sec": 0.3,
+    "valid_end_sec": 0.5
+  },
+  "trigger": {
+    "hold_ms": 5000,
+    "use_sleep": false,
+    "sleep_sec": 300
+  },
+  "accel": {
+    "enable": true,
+    "axis_mask": 7,
+    "range": 8,
+    "odr": 12,
+    "bwp": 2,
+    "filter_perf": 1,
+    "fifo_watermark": 40,
+    "sample_rate": 1600,
+    "fft_size": 1024,
+    "noise_perf": 1,
+    "motion_en": false,
+    "wake_g": 1.0,
+    "wake_dur": 5,
+    "rms_thresh": [ 0.5, 0.5, 0.5 ],
+    "kurt_ng_thresh": [ 5.0, 5.0, 5.0 ],
+    "crest_ng_thresh": [ 6.0, 6.0, 6.0 ],
+    "skew_ng_thresh": [ 1.5, 1.5, 1.5 ],
+    "bands": [
+      { "en": false, "start": 10.0, "end": 30.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 30.0, "end": 60.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 60.0, "end": 100.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 100.0, "end": 250.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 250.0, "end": 400.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 400.0, "end": 600.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 600.0, "end": 800.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 0.0, "end": 0.0, "thresh": [ 1.0, 1.0, 1.0 ] }
+    ],
+    "offset": [ 0.0, 0.0, 0.0 ],
+    "gain": [ 1.0, 1.0, 1.0 ],
+    "peak_amp_min": 0.1,
+    "peak_freq_gap_min": 50.0,
+    "dsp": {
+      "rem_dc": true,
+      "med_en": true,
+      "med_win": 3,
+      "hpf": { "en": true, "cutoff": 10.0, "taps": 63 },
+      "lpf": { "en": false, "cutoff": 800.0, "taps": 63 },
+      "iir_hpf": { "en": false, "cutoff": 20.0, "q": 0.707 },
+      "iir_lpf": { "en": false, "cutoff": 1000.0, "q": 0.707 },
+      "notch": { "en": false, "freq": 60.0, "gain": 1.0, "q": 30.0 },
+      "notch2": { "en": false, "freq": 120.0, "gain": 1.0, "q": 30.0 },
+      "win_type": 0
+    }
+  },
+  "gyro": {
+    "enable": false,
+    "axis_mask": 7,
+    "range": 250,
+    "odr": 12,
+    "bwp": 0,
+    "filter_perf": 1,
+    "noise_perf": 1,
+    "sample_rate": 1600,
+    "fft_size": 1024,
+    "rms_thresh": [ 10.0, 10.0, 10.0 ],
+    "kurt_ng_thresh": [ 5.0, 5.0, 5.0 ],
+    "crest_ng_thresh": [ 6.0, 6.0, 6.0 ],
+    "skew_ng_thresh": [ 1.5, 1.5, 1.5 ],
+    "bands": [
+      { "en": false, "start": 1.0, "end": 10.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 10.0, "end": 50.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 50.0, "end": 100.0, "thresh": [ 1.0, 1.0, 1.0 ] },
+      { "en": false, "start": 100.0, "end": 250.0, "thresh": [ 1.0, 1.0, 1.0 ] }
+    ],
+    "offset": [ 0.0, 0.0, 0.0 ],
+    "gain": [ 1.0, 1.0, 1.0 ],
+    "peak_amp_min": 0.1,
+    "peak_freq_gap_min": 50.0,
+    "dsp": {
+      "rem_dc": true,
+      "med_en": true,
+      "med_win": 3,
+      "hpf": { "en": true, "cutoff": 1.0, "taps": 31 },
+      "lpf": { "en": false, "cutoff": 500.0, "taps": 31 },
+      "iir_hpf": { "en": false, "cutoff": 20.0, "q": 0.707 },
+      "iir_lpf": { "en": false, "cutoff": 1000.0, "q": 0.707 },
+      "notch": { "en": false, "freq": 60.0, "gain": 1.0, "q": 30.0 },
+      "notch2": { "en": false, "freq": 120.0, "gain": 1.0, "q": 30.0 },
+      "win_type": 0
+    }
+  },
+  "audio": {
+    "enable": true,
+    "channel_mask": 3,
+    "sample_rate": 42000,
+    "fft_size": 1024,
+    "mel_bands": 26,
+    "rms_thresh": [ 0.05, 0.05 ],
+    "kurt_ng_thresh": [ 5.0, 5.0 ],
+    "crest_ng_thresh": [ 4.0, 4.0 ],
+    "skew_ng_thresh": [ 2.0, 2.0 ],
+    "bands": [
+      { "en": false, "start": 100.0, "end": 500.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 500.0, "end": 1500.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 1500.0, "end": 4000.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 4000.0, "end": 8000.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 8000.0, "end": 12000.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 12000.0, "end": 16000.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 16000.0, "end": 20000.0, "thresh": [ 1.0, 1.0 ] },
+      { "en": false, "start": 0.0, "end": 0.0, "thresh": [ 1.0, 1.0 ] }
+    ],
+    "noise": {
+      "gate_en": false,
+      "gate_thresh": 0.001,
+      "mode": 0,
+      "sub_str": 1.2,
+      "adp_alpha": 0.01,
+      "learn_frames": 100
+    },
+    "pre_en": true,
+    "pre_alpha": 0.97,
+    "beam_gain": 0.5,
+    "window_ms": 25.0,
+    "hop_ms": 10.0,
+    "auto_idle_min": 60,
+    "ref_freq": 1000.0,
+    "filt_min": 100.0,
+    "filt_max": 8000.0,
+    "gain_max": 3.0,
+    "gain_min": 0.3,
+    "norm_safe": 1.5,
+    "gain_ch": [ 1.0, 1.0 ],
+    "eq_coeffs": [
+      [ 0.0, 0.0, 0.0 ],
+      [ 0.0, 0.0, 0.0 ]
+    ],
+    "active_ceps_count": 3,
+    "active_peak_count": 5,
+    "ceps_targets": [ 0.0, 0.0, 0.0 ],
+    "f_min": 100.0,
+    "f_max": 8000.0,
+    "peak_amp_min": 0.1,
+    "peak_freq_gap_min": 50.0,
+    "dsp": {
+      "rem_dc": true,
+      "med_en": true,
+      "med_win": 3,
+      "hpf": { "en": true, "cutoff": 20.0, "taps": 63 },
+      "lpf": { "en": false, "cutoff": 16000.0, "taps": 63 },
+      "iir_hpf": { "en": false, "cutoff": 20.0, "q": 0.707 },
+      "iir_lpf": { "en": false, "cutoff": 1000.0, "q": 0.707 },
+      "notch": { "en": false, "freq": 60.0, "gain": 1.0, "q": 30.0 },
+      "notch2": { "en": false, "freq": 120.0, "gain": 1.0, "q": 30.0 },
+      "win_type": 0
+    }
+  }
+}

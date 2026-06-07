@@ -1,0 +1,129 @@
+{
+    "test_no": [
+        1,
+        2
+    ],
+    "sample_rate": 42000,
+    "ReadDataBlob": {
+        "tmpfilename": "tmp.h5",
+        "remove_tmp_immediately": true
+    },
+    "PreEmphasisRaw": {
+        "scale_factor": 0.97
+    },
+    "GetValidInterval": {
+        "time_from": 0.295,
+        "time_to": 0.495
+    },
+    "GetTriggerInterval": {
+        "time_from": 0.0,
+        "time_to": 0.2
+    },
+    "FilterActiveNoiseCanceling": {
+        "n_fft": 5600,
+        "win_length": 420,
+        "hop_length": 210,
+        "prop_decrease": 1.0
+    },
+    "FTUR_CPSR_MAX_N1": {
+        "quef": 0.008333333333333333,
+        "bandwidth": 0.0006,
+        "agg_fun": "max"
+    },
+    "FTUR_CPSR_MAX_N2": {
+        "quef": 0.016666666666666666,
+        "bandwidth": 0.0006,
+        "agg_fun": "max"
+    },
+    "FTUR_CPSR_MAX_N3": {
+        "quef": 0.025,
+        "bandwidth": 0.0006,
+        "agg_fun": "max"
+    },
+    "FTUR_CPSR_MAX_N4": {
+        "quef": 0.03333333333333333,
+        "bandwidth": 0.0006,
+        "agg_fun": "max"
+    },
+    "FTUR_CPSR_MXRMS_N1": {
+        "quef": 0.008333333333333333,
+        "bandwidth": 0.0006,
+        "agg_fun": "maxrms"
+    },
+    "FTUR_CPSR_MXRMS_N2": {
+        "quef": 0.016666666666666666,
+        "bandwidth": 0.0006,
+        "agg_fun": "maxrms"
+    },
+    "FTUR_CPSR_MXRMS_N3": {
+        "quef": 0.025,
+        "bandwidth": 0.0006,
+        "agg_fun": "maxrms"
+    },
+    "FTUR_CPSR_MXRMS_N4": {
+        "quef": 0.03333333333333333,
+        "bandwidth": 0.0006,
+        "agg_fun": "maxrms"
+    },
+    "FTUR_SPTR_1000_3000_RMS": {
+        "freq": 2000,
+        "bandwidth": 2000,
+        "agg_fun": "rms"
+    },
+    "FTUR_SPTR_3000_6000_RMS": {
+        "freq": 4500,
+        "bandwidth": 3000,
+        "agg_fun": "rms"
+    },
+    "FTUR_SPTR_6000_9000_RMS": {
+        "freq": 7500,
+        "bandwidth": 3000,
+        "agg_fun": "rms"
+    },
+    "FTUR_WVFM_STDDEV": {
+        "n_kernel": 204,
+        "stride": 102,
+        "pool_mode": "std",
+        "agg_fun": "min"
+    },
+    "FTUR_TRGER": {
+        "threshold": 0,
+        "n_trigger_min": 1,
+        "delete_mask_frame_index": 0,
+        "nsta": 0.001,
+        "nlta": 0.01,
+        "ratio": 0.0,
+        "quiet": 0.05
+    },
+    "params_line": {
+        "FilterActiveNoiseCanceling": {
+            "prop_decrease": {
+                "1": 1.0,
+                "2": 1.0,
+                "3": 1.0,
+                "4": 1.0,
+                "5": 0.8,
+                "6": 1.0,
+                "7": 1.0,
+                "8": 1.0
+            }
+        }
+    },
+    "feature_names": [
+        "FTUR_CPSR_MAX_N1",
+        "FTUR_CPSR_MAX_N2",
+        "FTUR_CPSR_MAX_N3",
+        "FTUR_CPSR_MAX_N4",
+        "FTUR_CPSR_MXRMS_N1",
+        "FTUR_CPSR_MXRMS_N2",
+        "FTUR_CPSR_MXRMS_N3",
+        "FTUR_CPSR_MXRMS_N4",
+        "FTUR_RMS",
+        "FTUR_SPTR_1000_3000_RMS",
+        "FTUR_SPTR_3000_6000_RMS",
+        "FTUR_SPTR_6000_9000_RMS",
+        "FTUR_WVFM_STDDEV",
+        "FTUR_ENRG",
+        "FTUR_TRGER"
+    ]
+}

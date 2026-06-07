@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            .pio/libdeps
+          key: ${{ runner.os }}-pio-release-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-release-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      - name: Get Environment List from platformio.ini
+        id: get_envs
+        run: |
+          ENV_LIST=$(grep -oP '(?<=\[env:).*?(?=\])' platformio.ini | tr '\n' ',')
+          ENV_LIST=${ENV_LIST%,}
+          echo "ENV_LIST=$ENV_LIST" >> $GITHUB_ENV
+          echo "Available environments: $ENV_LIST"
+
+      # --- 핵심 추가 부분: 빌드 전 esp-dsp 라이브러리 정리 ---
+      - name: Pre-install and Clean up esp-dsp
+        run: |
+          echo "Installing libraries to clean up..."
+          pio lib install
+          
+          # 모든 환경의 libdeps를 순회하며 esp-dsp 정리
+          find .pio/libdeps -type d -name "esp-dsp" | while read DSP_DIR; do
+            echo "Cleaning up $DSP_DIR"
+            # 1. 예제 및 테스트 폴더 삭제 (ssd1306.h 에러 방지)
+            rm -rf "$DSP_DIR/examples"
+            rm -rf "$DSP_DIR/applications"
+            find "$DSP_DIR" -type d -name "test" -exec rm -rf {} +
+            find "$DSP_DIR" -type d -name "test_sim" -exec rm -rf {} +
+            find "$DSP_DIR" -type d -name "test_app" -exec rm -rf {} +
+            
+            # 2. S3 빌드 충돌 방지를 위한 아키텍처 파일 삭제
+            find "$DSP_DIR" -name "*_arp4.S" -delete
+          done
+          echo "Deep cleanup for esp-dsp complete."
+
+      - name: Build and Build Filesystem for Each Environment
+        run: |
+          IFS=',' read -r -a env_array <<< "${{ env.ENV_LIST }}"
+          for ENV in "${env_array[@]}"; do
+            echo "Building environment: $ENV"
+            # 라이브러리 소스가 수정되었으므로 pio run 시 자동으로 다시 받지 않도록 주의
+            pio run -e "$ENV" --disable-auto-clean || echo "Build failed for $ENV"
+            pio run -e "$ENV" --target buildfs --disable-auto-clean || echo "FS failed for $ENV"
+          done
+
+      # --- 이후 단계(Rename, Zip, Upload)는 동일 ---
+      - name: Install rename
+        run: sudo apt-get update && sudo apt-get install -y rename
+
+      - name: Rename bin files
+        run: |
+          find .pio/build/*/*.bin -print -exec rename 's:/:-:g' {} \;
+          rename 's/.pio-build-//' ./.pio-build-*.bin     
+
+      - name: Create toDeploy directory
+        run: mkdir toDeploy
+
+      - name: Replace space with underscore in folder names
+        run: |
+          find lib -type d -name "* *" | while read FNAME; do mv "$FNAME" "${FNAME// /_}"; done
+
+      - name: Zip libraries per board
+        run: |
+          if [ -d lib ]; then
+            for dir in lib/*/; do
+              if [ -d "$dir" ]; then
+                zip -r "${dir%/}-libraries.zip" "$dir"
+              fi
+            done
+            if compgen -G "lib/*.zip" > /dev/null; then
+              mv lib/*.zip toDeploy
+            fi
+          fi
+
+      - name: Zip source code
+        run: |
+          zip -r Sources.zip src
+          mv Sources.zip toDeploy
+          if ls *.bin 1> /dev/null 2>&1; then
+            mv *.bin toDeploy
+          fi
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: toDeploy/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

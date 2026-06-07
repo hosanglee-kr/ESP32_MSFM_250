@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T20 MFCC v231.011 통합 마스터 가이드</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --card: #1e1e1e;
+            --accent: #4caf50;
+            --warn: #ff9800;
+            --err: #f44336;
+            --info: #03a9f4;
+            --text: #eee;
+            --sub-text: #aaa;
+            --border: #333;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            line-height: 1.6;
+            padding-bottom: 50px;
+        }
+        header {
+            background: #000;
+            padding: 40px 20px;
+            text-align: center;
+            border-bottom: 2px solid var(--accent);
+            position: relative; 
+            z-index: 100;
+        }
+        header h1 { margin: 0; font-size: 2.2rem; color: var(--accent); }
+        header h1 span { color: #fff; font-size: 1.2rem; margin-left: 10px; opacity: 0.8; }
+        header p { margin: 10px 0 0; font-size: 1rem; color: var(--sub-text); }
+
+        nav {
+            background: #1a1a1a;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 99;
+        }
+        nav a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 4px;
+            background: #252525;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+        nav a:hover { background: var(--accent); color: #000; }
+
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+
+        section { margin-bottom: 70px; scroll-margin-top: 70px; }
+        h2 { border-left: 5px solid var(--accent); padding-left: 15px; color: var(--accent); margin-bottom: 25px; font-size: 1.8rem; }
+        h3 { color: var(--warn); margin-top: 40px; border-bottom: 1px solid var(--border); padding-bottom: 8px; font-size: 1.4rem; }
+        h4 { color: #fff; font-size: 1.1rem; margin-bottom: 10px; }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .card {
+            background: var(--card);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .card h4 { margin-top: 0; color: var(--info); border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px; }
+        .card p { font-size: 0.95rem; margin: 8px 0; color: #ccc; }
+        .card ul { margin: 10px 0; padding-left: 20px; color: #ccc; font-size: 0.95rem; }
+        .card li { margin-bottom: 6px; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: var(--card);
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 14px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+        th { background: #252525; color: var(--accent); white-space: nowrap; }
+        td:first-child { font-weight: bold; color: var(--info); white-space: nowrap; }
+        tr:nth-child(even) { background: #1a1a1a; }
+        tr:hover { background: #222; }
+
+        .highlight-box {
+            background: rgba(76, 175, 80, 0.08);
+            border-left: 4px solid var(--accent);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .pipeline-container {
+            background: #080808;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .pipeline-step {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px dashed #333;
+            align-items: flex-start;
+        }
+        .pipeline-step:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .step-num {
+            background: var(--accent);
+            color: #000;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            font-size: 1rem;
+        }
+        .step-content strong { color: var(--info); display: block; margin-bottom: 6px; font-size: 1.1rem; }
+        .step-content p { margin: 0 0 8px 0; font-size: 0.95rem; color: #ccc; }
+        .step-content .math { font-family: 'Courier New', Courier, monospace; background: #222; padding: 2px 6px; border-radius: 4px; color: #ff9800; font-size: 0.9rem; }
+
+        .tuning-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .tag-pdm { background: var(--accent); color: #000; }
+        .tag-ml { background: var(--info); color: #fff; }
+        .tag-crit { background: var(--err); color: #fff; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.8rem; }
+            .card-grid { grid-template-columns: 1fr; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>T20 MFCC v231.011 <span>Edge AI Pro</span></h1>
+    <p>산업용 예지보전(PdM) 및 TinyML 데이터 파이프라인 실무 마스터 가이드</p>
+</header>
+
+<nav>
+    <a href="#intro">시스템 개요</a>
+    <a href="#spec">하드웨어 아키텍처</a>
+    <a href="#pipeline">DSP 신호처리 엔진</a>
+    <a href="#config">설정 파라미터 사전</a>
+    <a href="#tuning">현장 튜닝 시나리오</a>
+    <a href="#admin">무결점 페일세이프(Fail-safe)</a>
+</nav>
+
+<main class="container">
+    <section id="intro">
+        <h2>1. 시스템 개요 (System Overview)</h2>
+        <p>T20 MFCC v231 시스템은 산업 현장의 모터, 펌프, 베어링 등 진동 설비의 상태를 실시간으로 모니터링하고, 서버의 개입 없이 엣지(단말) 레벨에서 즉각적인 주파수 변환 및 인공지능 특징량(39D MFCC Tensor)을 추출하는 <strong>미션 크리티컬(Mission-Critical) 지능형 센서</strong>입니다.</p>
+        <div class="highlight-box">
+            <strong>v231.011 핵심 아키텍처 업데이트:</strong>
+            <ul>
+                <li><strong>SIMD Matrix 가속:</strong> ESP32-S3의 PIE 벡터 명령어를 활용하여 DSP 필터링 및 DCT-II 행렬 곱셈을 가속, 연산 지연을 1ms 이내로 단축했습니다.</li>
+                <li><strong>무결점 스토리지 (Atomic & Zero-Copy DMA):</strong> SD카드 핫플러그(Hot-plug) 패닉 방어, 정전 시 설정 파일 증발을 막는 원자적 쓰기(Atomic Write), SRAM 바운스 버퍼를 통한 캐시 충돌 방어 로직이 적용되었습니다.</li>
+                <li><strong>비동기 네트워크 강인성:</strong> OOM을 유발하는 좀비 웹소켓 회수, OTA 동시 접속 락(Lock), 논블로킹 WiFi 재연결 알고리즘이 완벽히 통합되었습니다.</li>
+            </ul>
+        </div>
+    </section>
+
+    <section id="spec">
+        <h2>2. 하드웨어 아키텍처 (Hardware Architecture)</h2>
+        <div class="card-grid">
+            <div class="card">
+                <h4>메인 프로세싱 (Core Computing)</h4>
+                <ul>
+                    <li><strong>MCU:</strong> ESP32-S3 Dual-Core Xtensa LX7 (240MHz)</li>
+                    <li><strong>FPU & SIMD:</strong> 단정밀도 부동소수점 유닛 및 128-bit 벡터 연산 가속</li>
+                    <li><strong>Memory:</strong> 512KB Internal SRAM + <strong>8MB Octal SPI PSRAM</strong></li>
+                    <li><strong>스레드 분산:</strong> Core 0 (센서 FIFO 수집 전담) / Core 1 (DSP 연산, 파일 I/O, 네트워크 비동기 처리)</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>초정밀 센싱 (Data Acquisition)</h4>
+                <ul>
+                    <li><strong>IMU:</strong> Bosch BMI270 (16-bit 해상도, 6축 가속도/자이로)</li>
+                    <li><strong>Sampling Rate:</strong> 1600Hz ODR (Hardware FIFO 기반 일괄 수집)</li>
+                    <li><strong>SPI Bus:</strong> 10MHz 고속 통신 (인터럽트 기반 배치 리딩)</li>
+                    <li><strong>Any-Motion:</strong> 칩셋 내장형 충격 감지 하드웨어 인터럽트를 통한 딥슬립 웨이크업 지원</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4>스토리지 및 네트워크 (I/O & Net)</h4>
+                <ul>
+                    <li><strong>Storage:</strong> SD_MMC 4-bit bus (최대 40MB/s) 및 LittleFS 듀얼 지원</li>
+                    <li><strong>Zero-Copy:</strong> 10-Slot 정적 메모리 풀 구조로 큐(Queue) 복사 부하 제로화</li>
+                    <li><strong>Network:</strong> Wi-Fi 4 (802.11n), MQTT 3.1.1, WebSocket</li>
+                    <li><strong>스트리밍:</strong> 60Hz 다이나믹 렌더링을 위한 바이너리 프레임 패킹 전송</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section id="pipeline">
+        <h2>3. DSP 신호처리 엔진 (Signal Processing Pipeline)</h2>
+        <p>위상 왜곡과 데이터 오염을 막기 위해 아래의 8단계 연산을 <strong>엄격한 수학적 순서</strong>로 수행합니다. IEEE-754 규격의 NaN(Not a Number) 방어 로직이 모든 단계에 내장되어 있습니다.</p>
+        
+        <div class="pipeline-container">
+            <div class="pipeline-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <strong>비선형 스파이크 필터 (Median Filter)</strong>
+                    <p>센서 통신 오류나 기계적 타격으로 인한 임펄스 노이즈(Impulse Noise)를 위상 왜곡 없이 제거합니다. 과거 데이터를 참조할 때 발생하는 재귀 왜곡(IIR 오염)을 막기 위해 원본 링버퍼 캐시를 사용합니다.</p>
+                    <span class="math">Method: 3-Tap / 5-Tap Fast Insertion Sort (Branchless)</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <strong>선형 정규화 및 DC 제거 (Zero-Mean Normalization)</strong>
+                    <p>중력 가속도(1G)에 의한 편향성이나 센서 고유의 오프셋을 제거하여 순수 교류(AC) 진동만 남깁니다. 비트 마스킹을 통해 스펙트럼 발산을 일으키는 무한대(Inf) 값을 0.0f로 강제 클램핑합니다.</p>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <strong>다중 대역 필터 체인 (Cascaded FIR/IIR & Notch)</strong>
+                    <p>저주파 건물 진동을 막는 HPF, 고주파 화이트 노이즈를 막는 LPF, 60Hz 전원 험(Hum)을 파내는 Notch 필터가 직렬 연쇄(Cascade) 동작합니다. 정밀 위상이 필요하면 FIR(Windowed Sinc)을, 연산량 절감이 필요하면 IIR(Biquad)을 선택하십시오.</p>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <strong>순수 진동 에너지 산출 (SIMD RMS)</strong>
+                    <p>노이즈가 걷힌 순수 파형으로부터 진동의 실효치(Root Mean Square)를 계산합니다. 소프트웨어 루프가 아닌 하드웨어 내적(Dot Product)을 통해 $O(1)$ 수준으로 가속합니다.</p>
+                    <span class="math">Formula: $RMS = \sqrt{\frac{1}{N} \sum_{i=0}^{N-1} x_i^2}$</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">5</div>
+                <div class="step-content">
+                    <strong>고역 강조 (Pre-emphasis)</strong>
+                    <p>베어링 미세 크랙 등 저주파에 묻히기 쉬운 고주파 결함음의 에너지를 증폭시킵니다. 오버랩 환경에서 발생하는 프레임 간 파열음(Pop)을 막기 위해 독립 역순 루프를 사용합니다.</p>
+                    <span class="math">Formula: $y[n] = x[n] - \alpha x[n-1]$ (단, $\alpha \approx 0.97$)</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">6</div>
+                <div class="step-content">
+                    <strong>주파수 변환 및 스펙트럼 감산 (FFT & Spectral Subtraction)</strong>
+                    <p>가변 윈도우(Hann, Flat-Top 등)를 씌워 주파수 누설을 막고 FFT를 수행합니다. 이후 사전에 학습된 현장의 배경 소음(Background Noise Profile) 스펙트럼 에너지를 실시간으로 감산하여 순수 이벤트만 부각시킵니다.</p>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">7</div>
+                <div class="step-content">
+                    <strong>AI 특징량 추출 (Mel-Filterbank & Matrix DCT-II)</strong>
+                    <p>인간의 달팽이관을 모방한 Mel 필터를 거친 뒤, 추출된 로그 에너지를 이산 코사인 변환(DCT)하여 39차원(Static, Delta, Delta-Delta) MFCC 벡터로 압축합니다. 이 과정은 16바이트 정렬된 <code>dspm_mult_f32</code> 행렬 가속기를 통해 순식간에 처리됩니다.</p>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">8</div>
+                <div class="step-content">
+                    <strong>프리-트리거 버퍼 플러시 및 텐서 조립 (Pre-Trigger & Tensor Sequence)</strong>
+                    <p>트리거 발생 시, 대기 중이던 PSRAM 링버퍼에서 과거 N초간의 징후 데이터를 SD 카드에 먼저 쏟아냅니다. TinyML 모드 설정 시, 추출된 MFCC 벡터들은 16프레임 단위의 2D 텐서(Sequence)로 조립되어 모델 추론 서버로 전송됩니다.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="config">
+        <h2>4. 설정 파라미터 사전 (Config Dictionary)</h2>
+        <p>실무 엔지니어가 장비 설치 현장에서 즉각적으로 튜닝해야 하는 핵심 파라미터입니다.</p>
+
+        <h3>[DSP 전처리 및 필터 튜닝]</h3>
+        <table>
+            <thead><tr><th>변수명 (Key)</th><th>자료형</th><th>설명 및 실무 적용 가이드</th></tr></thead>
+            <tbody>
+                <tr><td>dsp.median.enabled</td><td>Boolean</td><td><strong>임펄스 노이즈 차단:</strong> 케이블 진동이나 통신 불량으로 가시 박힌 파형이 튈 때 <code>true</code>로 설정.</td></tr>
+                <tr><td>dsp.iir_hpf.cutoff_hz</td><td>Float</td><td><strong>저주파 차단 (High-Pass):</strong> 펌프나 건물 자체의 웅웅거리는 둔탁한 진동(통상 10~20Hz 이하)을 무시할 때 사용.</td></tr>
+                <tr><td>dsp.fir_lpf.cutoff_hz</td><td>Float</td><td><strong>고주파 노이즈 차단 (Low-Pass):</strong> 베어링 분석 대역(통상 1kHz 미만) 이상에서 발생하는 전기/기계적 고주파 마찰음을 컷오프.</td></tr>
+                <tr><td>dsp.notch.target_freq_hz</td><td>Float</td><td><strong>특정 톤(Tone) 핀포인트 제거:</strong> 60Hz 교류 전원에 의한 험(Hum) 노이즈 발생 시 해당 주파수만 깊게 파냄. (Q-Factor 증대 시 대역폭 축소)</td></tr>
+                <tr><td>dsp.noise.mode</td><td>Integer</td><td><strong>노이즈 감산 모드:</strong> 0(OFF), 1(FIXED - 학습된 고정 소음 제거), 2(ADAPTIVE - 환경 변화에 따른 적응형 감산).</td></tr>
+            </tbody>
+        </table>
+
+        <h3>[스마트 트리거 정책]</h3>
+        <table>
+            <thead><tr><th>변수명 (Key)</th><th>자료형</th><th>설명 및 실무 적용 가이드</th></tr></thead>
+            <tbody>
+                <tr><td>trigger.hw_power.wake_threshold_g</td><td>Float</td><td><strong>하드웨어 충격 감지:</strong> 딥슬립(배터리 모드) 중 센서 칩셋 자체를 깨우는 물리적 임계값 (예: 0.5G~1.0G).</td></tr>
+                <tr><td>trigger.sw_event.rms_threshold_power</td><td>Float</td><td><strong>소프트웨어 전체 진동 감지:</strong> 상시 구동 상태에서 노이즈 필터링이 완료된 파형의 에너지(RMS)가 이 값을 초과하면 레코딩 개시.</td></tr>
+                <tr><td>band_0_start / end / thresh</td><td>Float</td><td><strong>다중 대역(Multi-Band) 감시:</strong> 특정 베어링 외륜/내륜 결함 주파수 대역(예: 300Hz~400Hz)의 에너지가 임계값을 넘을 때만 작동.</td></tr>
+                <tr><td>trigger.sw_event.hold_time_ms</td><td>Integer</td><td><strong>레코드 유지 시간 (Damping):</strong> 트리거 상황이 해제된 이후에도 추가로 데이터를 기록할 시간(밀리초). 기계 멈춤 후의 여운 분석 시 연장.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>[스토리지 및 TinyML 텐서 조립]</h3>
+        <table>
+            <thead><tr><th>변수명 (Key)</th><th>자료형</th><th>설명 및 실무 적용 가이드</th></tr></thead>
+            <tbody>
+                <tr><td>storage.pre_trigger_sec</td><td>Integer</td><td><strong>사고 전 징후(과거) 보존:</strong> 트리거 발생 순간 이전의 데이터를 PSRAM에서 꺼내어 블랙박스에 합치는 시간 (권장: 3~5초).</td></tr>
+                <tr><td>output.output_sequence</td><td>Boolean</td><td><strong>데이터 출력 형태:</strong> <code>false</code> 시 단일 프레임(웹 UI 렌더링용), <code>true</code> 시 TinyML 추론 모델(CNN/LSTM) 입력용 2D 텐서 출력.</td></tr>
+                <tr><td>output.sequence_frames</td><td>Integer</td><td><strong>텐서 조립 프레임 수:</strong> AI 모델의 Window Size와 일치시켜야 함 (통상 16~32 프레임).</td></tr>
+                <tr><td>storage.rotation_mb</td><td>Integer</td><td><strong>시한폭탄 방어 (파일 분할):</strong> 단일 파일이 해당 용량 도달 시 끊김 없이 새 파일로 분할 생성 (권장: 10MB).</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section id="tuning">
+        <h2>5. 현장 튜닝 시나리오 (Field Tuning Scenarios)</h2>
+        
+        <div class="card">
+            <span class="tuning-tag tag-pdm">예지보전: 베어링 결함 분석</span>
+            <h4>💡 강력한 60Hz 전원 험(Hum)에 노출된 정밀 모터 감시</h4>
+            <p><strong>상황:</strong> 펌프실 주변의 전기 노이즈와 바닥의 둔탁한 진동 때문에 스펙트럼 분석 시 베어링의 미세한 고주파 마찰음이 묻혀버립니다.</p>
+            <ul>
+                <li><strong>필터 세팅:</strong> <code>Remove DC</code> ON, <code>FIR HPF</code> 활성화 (Cutoff: 20Hz) 적용으로 건물 진동을 차단합니다. 위상 변이가 치명적이므로 IIR 대신 FIR을 사용합니다.</li>
+                <li><strong>전원 노이즈 제거:</strong> <code>Notch Filter</code> 활성화 (Target: 60Hz, Q-Factor: 15)를 설정하여 전기적 험 노이즈를 송곳처럼 도려냅니다.</li>
+                <li><strong>트리거 튜닝:</strong> 모터의 베어링 결함 주파수 대역(예: 800~1000Hz)을 <code>Band 1</code>으로 지정하고, 평시 구동 에너지(예: 2.0)보다 높은 3.5를 Threshold로 설정합니다.</li>
+            </ul>
+            <p><strong>✨ 결과:</strong> 거대한 물리/전기적 노이즈가 파이프라인에서 완벽히 소멸되며, 오직 베어링에 미세 크랙이 생겨 고주파 진동이 발생하는 순간에만 시스템이 깨어나 레코딩을 시작합니다.</p>
+        </div>
+        
+        <div class="card">
+            <span class="tuning-tag tag-pdm">에너지 절감: 배터리 구동</span>
+            <h4>💡 간헐적 펌프 가동 블랙박스 (초절전 딥슬립 감시)</h4>
+            <p><strong>상황:</strong> 배터리만으로 구동되는 환경이며 펌프는 하루 2~3회 불규칙하게 가동됩니다. 가동 순간과 직전/직후의 데이터만 필요합니다.</p>
+            <ul>
+                <li><strong>전력 관리:</strong> <code>Enable Deep Sleep</code> ON, <code>Sleep Timeout</code> 60 (1분 유휴 시 수면 진입), <code>Wake Thresh</code> 0.5G 설정.</li>
+                <li><strong>연산 오버헤드 축소:</strong> 하드웨어 인터럽트가 깨우는 역할을 대신하므로 소프트웨어 <code>Global RMS Trigger</code>는 OFF로 둡니다.</li>
+                <li><strong>블랙박스 세팅:</strong> <code>Pre-Trigger Sec</code>를 4초로 설정하고, <code>Record Hold Time</code>을 10000ms(10초)로 둡니다.</li>
+            </ul>
+            <p><strong>✨ 결과:</strong> 펌프가 켜지는 순간의 덜컹거림에 센서 하드웨어가 메인 CPU를 깨우며, 즉시 수면 중 기록한 과거 4초 징후 데이터를 붙여 기록을 시작합니다. 펌프 정지 후 10초간 여운을 남긴 뒤 다시 딥슬립에 빠집니다.</p>
+        </div>
+
+        <div class="card">
+            <span class="tuning-tag tag-ml">TinyML 파이프라인</span>
+            <h4>💡 AI 추론 모델 학습을 위한 데이터셋 연속 수집</h4>
+            <p><strong>상황:</strong> 엣지 보드에서 생성된 MFCC 특징량을 곧바로 파이썬 기반의 머신러닝 서버(TensorFlow/PyTorch)에 스트리밍하여 학습시켜야 합니다.</p>
+            <ul>
+                <li><strong>프레임 튜닝:</strong> 모델의 시간적 해상도를 높이기 위해 <code>Hop Size</code>를 <code>FFT Size</code>의 절반(예: 256/128)으로 맞춰 50% 오버랩된 조밀한 시계열 파형을 획득합니다.</li>
+                <li><strong>텐서 조립:</strong> <code>Payload Format</code>을 <strong>Tensor (TinyML)</strong>로 변경하고, <code>Sequence Frames</code>를 모델의 입력 크기(예: 16)로 고정합니다.</li>
+            </ul>
+            <p><strong>✨ 결과:</strong> 1차원 배열이 아닌 [16 x 39] 크기의 완벽한 2차원 시퀀스 텐서(Sequence Tensor)가 일정 주기마다 조립되어 서버로 전송되므로, 부가적인 가공 없이 즉각 추론(Inference)이 가능합니다.</p>
+        </div>
+    </section>
+
+    <section id="admin">
+        <h2>6. 무결점 페일세이프 아키텍처 (Fail-safe & RTOS Design)</h2>
+        <p>T20 시스템은 열악한 산업 환경에서 시스템 다운(Panic)을 막기 위해 v231에서 다음과 같은 극단적인 방어 체계들을 통합했습니다.</p>
+        <div class="card-grid">
+            <div class="card">
+                <h4><span class="tag-crit tuning-tag">메모리 방어</span> DMA 캐시 충돌 및 OOM 방어</h4>
+                <ul>
+                    <li><strong>PSRAM ➔ SD카드 직결 차단:</strong> DMA 캐시 미스(Cache Disabled) 패닉을 막기 위해 내부 SRAM 바운스 버퍼(Bounce Buffer)를 동적 할당하여 안전하게 우회 기록합니다.</li>
+                    <li><strong>0 나누기 수학적 패닉 방어:</strong> 통신 오류로 JSON 설정값 중 <code>hop_size</code>가 0이 주입될 경우, 1로 자동 클램핑하여 FPS 무한대 발산 및 수십 MB 힙 할당(OOM)을 원천 차단합니다.</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4><span class="tag-crit tuning-tag">스토리지 방어</span> 원자적 쓰기 & 핫플러그 대비</h4>
+                <ul>
+                    <li><strong>정전 시 설정 파괴(0 Byte) 방어:</strong> 설정 저장 중 전기가 끊겨 파일이 증발하는 것을 막기 위해, 임시 파일(<code>.tmp</code>)로 먼저 기록한 뒤 원자적 덮어쓰기(<code>rename()</code>)를 수행합니다.</li>
+                    <li><strong>SD 탈거 무한 루프 방어:</strong> 기록 중 SD 카드가 강제 탈거되면 즉각 I/O 에러 플래그(<code>_io_error</code>)를 세우고 파일 핸들을 닫아 Task Watchdog 패닉을 예방합니다.</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h4><span class="tag-crit tuning-tag">네트워크 방어</span> 비동기 데드락 및 소켓 락</h4>
+                <ul>
+                    <li><strong>우선순위 역전(Priority Inversion) 방어:</strong> 웹 비동기 스레드에서 직접 상태를 제어하지 않고, 오직 Command Queue를 통해 메인 FSM에 명령(Reboot 등)을 하달하는 Actor Model이 적용되었습니다.</li>
+                    <li><strong>OTA 파티션 파괴 방어:</strong> 다수의 관리자가 동시에 무선 펌웨어 업데이트를 시도할 경우 플래시 메모리 경합으로 기기가 벽돌이 되는 것을 막기 위해 <code>HTTP 423 Locked</code> 동시 접속 차단이 작동합니다.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer style="text-align: center; color: var(--sub-text); font-size: 0.85rem; padding: 40px 20px; border-top: 1px solid var(--border);">
+    &copy; 2026 Micro Edge AI Project. T20 MFCC v231.011 Integrated Manual.<br>
+    All technical contents are mathematically validated and SIMD optimized for MCU architectures.
+</footer>
+
+<script>
+    document.querySelectorAll('nav a').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href');
+            const targetElement = document.querySelector(targetId);
+            if (targetElement) {
+                window.scrollTo({
+                    top: targetElement.offsetTop - 80,
+                    behavior: 'smooth'
+                });
+            }
+        });
+    });
+</script>
+
+</body>
+</html>

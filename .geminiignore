@@ -1,0 +1,13 @@
+/_devcontainer/
+/.pio/
+.cache/
+/.vscode/
+/src_ref/
+/src/T4_MC_013/
+/src/T2_MSFM_240/234/
+/src/T2_MSFM_240/241/
+/src/T2_MSFM_240/242/
+/src/T2_MSFM_240/242_backup/
+/src/T2_MSFM_240/243_backup/
+
+/src_backup/

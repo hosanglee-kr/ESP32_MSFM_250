@@ -1,0 +1,38 @@
+#######################################
+# Syntax Coloring Map for VectorQuaternionMatrix
+#######################################
+
+#######################################
+# Data types (KEYWORD1)
+#######################################
+
+Matrix3x3               KEYWORD1
+Quaternion              KEYWORD1
+
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+calculateRollRadians    KEYWORD2
+calculatePitchRadians   KEYWORD2
+calculateYawRadians     KEYWORD2
+
+calculateRollDegrees    KEYWORD2
+calculatePitchDegrees   KEYWORD2
+calculateYawDegrees     KEYWORD2
+
+
+#######################################
+# Structures (KEYWORD3)
+#######################################
+
+xyz_t                   KEYWORD3
+
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+RADIANS_TO_DEGREES        LITERAL1
+DEGREES_TO_RADIANS        LITERAL1

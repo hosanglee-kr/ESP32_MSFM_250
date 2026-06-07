@@ -1,0 +1,70 @@
+/* T4_013_01.css */
+:root {
+    --bg: #121212; --card: #1e1e1e; --text: #eee;
+    --accent: #4caf50; --warn: #ff9800; --err: #f44336;
+    --border: #333; --input-bg: #2a2a2a;
+}
+
+/* [교정] min-height: 100vh; 를 추가하여 경고 테두리 렌더링 범위 확보 */
+body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; line-height: 1.5; overflow-x: hidden; transition: box-shadow 0.3s; min-height: 100vh; }
+
+body.preview-dirty { box-shadow: inset 0 0 20px rgba(255, 152, 0, 0.5); } /* 핫스왑 튜닝 중 경고 테두리 */
+
+header { background: #000; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+.logo { font-size: 1.2em; font-weight: bold; }
+.logo span { color: var(--accent); font-size: 0.8em; margin-left: 5px; }
+.header-right { display: flex; gap: 10px; align-items: center; }
+.lang-btn { background: #333; color: #fff; height: 28px; padding: 0 10px; font-size: 0.8em; border:1px solid #555; border-radius:4px; cursor:pointer;}
+
+.tag { padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
+.tag.online { background: var(--accent); color: #fff; }
+.tag.offline { background: #555; color: #ccc; }
+.tag.ready { background: #2196f3; color: #fff; } 
+.tag.monitoring { background: var(--accent); color: #fff; } 
+.tag.recording { background: var(--err); color: #fff; animation: pulse 1s infinite; } 
+.tag.calibrating { background: #9c27b0; color: #fff; animation: pulse 1s infinite; } 
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+.container { padding: 15px; max-width: 1400px; margin: 0 auto; box-sizing: border-box; }
+.tab-bar { display: flex; background: #1a1a1a; border-bottom: 1px solid var(--border); position: sticky; top: 53px; z-index: 99; overflow-x: auto; }
+.tab-btn { flex: 1; padding: 12px; border: none; background: none; color: #888; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; white-space: nowrap; }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: #252525; }
+.tab-content { display: none; padding-bottom: 40px; }
+.tab-content.active { display: block; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100%, 1fr)); gap: 15px; margin-bottom: 20px; }
+@media (min-width: 768px) { .grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); } }
+
+.card { background: var(--card); border-radius: 10px; padding: 20px; border: 1px solid var(--border); box-sizing: border-box; width: 100%; overflow: hidden; }
+.section-title { font-size: 1.05em; color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 8px; margin-top: 0; }
+.sub-title { color: #aaa; font-size: 0.9em; border-bottom: 1px dashed #333; padding-bottom: 5px; margin: 15px 0 10px 0; }
+
+.form-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.form-group.highlight { background: rgba(76, 175, 80, 0.08); padding: 8px; border-radius: 6px; border-left: 3px solid var(--accent); }
+.form-group label { flex: 1 1 30%; font-size: 0.85em; color: #ccc; min-width: 100px; }
+input, select { flex: 1 1 60%; width: 100%; min-width: 0; background: var(--input-bg); color: white; border: 1px solid #444; padding: 8px 10px; border-radius: 6px; font-size: 0.9em; box-sizing: border-box; }
+.range-inputs { flex: 1 1 60%; display: flex; gap: 5px; align-items: center; width: 100%; }
+.config-box { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #222; }
+
+.action-bar { display: flex; justify-content: stretch; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); gap: 10px; }
+.btn-group { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+.btn { height: 40px; border: none; border-radius: 6px; padding: 0 16px; cursor: pointer; font-weight: bold; font-size: 0.85em; display: inline-flex; align-items: center; justify-content: center; flex: 1; }
+.primary { background: var(--accent); color: white; }
+.warning { background: var(--warn); color: #000; }
+.danger { background: var(--err); color: white; }
+.log-box { overflow-y: auto; font-family: monospace; font-size: 0.85em; color: var(--accent); background: #050505; padding: 15px; border-radius: 8px; border: 1px solid var(--border); white-space: pre-wrap; width: 100%; box-sizing: border-box; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;}
+
+.toast { visibility: hidden; min-width: 250px; background-color: #222; color: #fff; text-align: center; border-radius: 6px; padding: 14px; position: fixed; z-index: 200; left: 50%; bottom: 20px; transform: translateX(-50%); border-left: 5px solid var(--accent); box-shadow: 0 8px 25px rgba(0,0,0,0.5); font-size: 0.9em; }
+.toast.show { visibility: visible; animation: slideIn 0.4s, fadeOut 0.5s 2.5s; }
+.toast.error { border-left-color: var(--err); }
+
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th { color: #777; font-size: 0.85em; text-align: left; padding: 10px; border-bottom: 2px solid #333; }
+td { padding: 8px 10px; border-bottom: 1px solid #222; font-size: 0.85em; }
+
+
+
+/* [교정] min-height: 100vh; 를 추가하여 경고 테두리 렌더링 범위 확보 */
+body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; line-height: 1.5; overflow-x: hidden; transition: box-shadow 0.3s; min-height: 100vh; }

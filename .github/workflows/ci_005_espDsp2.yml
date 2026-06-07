@@ -1,0 +1,126 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [main, main-standalone]
+    paths:
+      - 'platformio.ini'
+      - 'lib/**'
+      - 'include/**'
+      - '.github/workflows/*.yml'
+      - 'src/**/*.c'
+      - 'src/**/*.cpp'
+      - 'src/**/*.h'
+      - 'src/**/*.ino'
+      - '!**.md'
+      - '!src/**/data_*/**'
+      - '!src/*_backup/**'
+
+env:
+  # Node.js 20 데드라인 대비 및 빌드 성능 최적화
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLATFORMIO_SETTING_ENABLE_TELEMETRY: 'false'
+
+jobs:
+  get_environments:
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.read_output.outputs.envs }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: List PlatformIO environments
+        id: list_envs
+        run: |
+          python -c "
+          import configparser
+          import json
+          config = configparser.ConfigParser()
+          config.read('platformio.ini')
+          all_envs = [s.split(':', 1)[1] for s in config.sections() if s.startswith('env:')]
+          # 특정 환경만 타겟팅하거나 전체 환경을 동적으로 생성
+          envs = [e for e in all_envs if e in ['esp32-s3-n16r8']]
+          if not envs: envs = all_envs
+          print(json.dumps(envs))
+          " > envs.json
+
+      - name: Read environments to output
+        id: read_output
+        run: |
+          ENVS=$(<envs.json)
+          echo "envs=${ENVS}" >> $GITHUB_OUTPUT
+
+  build:
+    runs-on: ubuntu-latest
+    needs: get_environments
+    strategy:
+      fail-fast: false
+      matrix:
+        environments: ${{ fromJson(needs.get_environments.outputs.environments) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+            .pio/libdeps
+          # .pio/build는 캐시 용량 최적화를 위해 제외 (빌드 안정성 향상)
+          key: ${{ runner.os }}-pio-v3-${{ matrix.environments }}-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-v3-${{ matrix.environments }}-
+            ${{ runner.os }}-pio-v3-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip platformio
+
+      - name: Dependency Setup & esp-dsp Cleanup
+        run: |
+          # 라이브러리 미리 설치
+          pio pkg install -e ${{ matrix.environments }}
+
+          # esp-dsp 충돌 방지 클린업
+          DSP_DIR=".pio/libdeps/${{ matrix.environments }}/esp-dsp"
+          if [ -d "$DSP_DIR" ]; then
+            echo "Cleaning up esp-dsp..."
+            find "$DSP_DIR" -type d -name "test*" -exec rm -rf {} +
+            rm -rf "$DSP_DIR/examples" "$DSP_DIR/applications"
+            find "$DSP_DIR" -name "*_arp4.S" -delete
+          fi
+
+      - name: Run PlatformIO build
+        run: pio run -e ${{ matrix.environments }}
+        # -j 4 옵션으로 병렬 컴파일 가속
+        # run: pio run -e ${{ matrix.environments }} -j 4
+
+      - name: Build filesystem image
+        run: pio run -e ${{ matrix.environments }} --target buildfs
+        continue-on-error: true
+
+      - name: Upload Unified Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.environments }}-build-bundle
+          # 빌드 폴더 내 파일 패턴 매칭으로 유연하게 업로드
+          path: |
+            .pio/build/${{ matrix.environments }}/firmware*.bin
+            .pio/build/${{ matrix.environments }}/partitions.bin
+            .pio/build/${{ matrix.environments }}/bootloader.bin
+            .pio/build/${{ matrix.environments }}/littlefs.bin
+          if-no-files-found: warn

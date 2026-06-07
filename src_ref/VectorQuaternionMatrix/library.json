@@ -1,0 +1,18 @@
+{
+    "name": "VectorQuaternionMatrix",
+    "description": "Includes xyz_t (3D vector), Quaternion, and 3x3 Matrix classes.",
+    "keywords": "3D vector quaternion matrix Euler angles IMU AHRS",
+    "authors": {
+        "name": "Martin Budden",
+        "url": "https://github.com/martinbudden"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/martinbudden/Library-VectorQuaternionMatrix.git"
+    },
+    "license": "MIT",
+    "version": "0.4.10",
+    "frameworks": "*",
+    "platforms": "*",
+    "headers": ["xy_type.h", "xyz_type.h", "Matrix2x2.h", "Matrix3x3.h", "Quaternion.h", "FastTrigonometry.h"]
+}

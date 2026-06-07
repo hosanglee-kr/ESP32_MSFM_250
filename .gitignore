@@ -1,0 +1,22 @@
+.pio
+
+.vscode/.browse.c_cpp.db*
+.vscode/settings.json
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+.vscode/arduino.json
+
+.codegraph/
+
+src/T2_MSFM_250_wiki/
+graphify-out/
+.agents/
+
+# Python Virtual Environment
+.venv/
+**/__pycache__/
+*.py[cod]
+
+# Temporary backup files
+*.bak
