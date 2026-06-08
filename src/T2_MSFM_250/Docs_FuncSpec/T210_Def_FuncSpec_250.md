@@ -1,6 +1,6 @@
 # [T210_Def] 4-Tier 시스템 상수 정의 및 전역 파라미터 SSOT
 
-본 문서는 **MSFM_T2_v250** 시스템의 전역 상수, 하드웨어 핀 맵, RTOS 태스크 바인딩 속성 및 컴파일 타임 계산식을 집중 기술한 `T210_Def_250.hpp` 모듈의 기능 규격서입니다. 본 모듈은 시스템 전체의 **Single Source of Truth (SSOT)** 역할을 수행합니다.
+본 문서는 **MSFM_T2_250** 시스템의 전역 상수, 하드웨어 핀 맵, RTOS 태스크 바인딩 속성 및 컴파일 타임 계산식을 집중 기술한 `T210_Def_250.hpp` 모듈의 기능 규격서입니다. 본 모듈은 시스템 전체의 **Single Source of Truth (SSOT)** 역할을 수행합니다.
 
 ---
 
@@ -35,7 +35,7 @@
 
 ### 3.1 Global (전역 디바이스 및 통신 인프라)
 *   **System**:
-    *   `VERSION_STR` = `"T240_v250"`
+    *   `VERSION_STR` = `"MSFM_T2_250"`
     *   `SEQUENCE_FRAMES_MAX` = 32, `SEQUENCE_FRAMES_DEF` = 16 (시계열 텐서 결합을 위한 최대/기본 프레임)
     *   `MATH_EPSILON_CONST` = `1e-6f` (0 나누기 임계치)
 *   **Hardware (GPIO 바인딩)**:
@@ -54,7 +54,7 @@
 *   **NetLimit & Net (Wi-Fi, NTP, MQTT)**:
     *   Wi-Fi SSID/PW 크기 제한 (32/64자), 오토폴백 예비 AP 개수 = 3
     *   NTP 타임존 = `"KST-9"` (한국 표준시), 서버: `pool.ntp.org`, `time.google.com`
-    *   MQTT 기본 포트 = 1883, Topic Root = `"smea/T2_MSFM_250"`
+    *   MQTT 기본 포트 = 1883, Topic Root = `"FACTORY_A_LINE_1/MSFM_T2_001"`
 *   **Storage**:
     *   `PRE_TRIGGER_SEC_DEF` = 3초 (트리거 감지 전 과거 3초 시점부터 기록)
     *   `ROTATE_MB_DEF` = 10MB (파일당 10MB 도달 시 로테이션)

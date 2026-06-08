@@ -44,19 +44,24 @@ inline void safe_dsps_fir_f32(fir_f32_t* fir, const float* input, float* output,
 
 CL_T2_DspEngine::CL_T2_DspEngine() {
     _isInitialized = false;
+    
     _audDsp = nullptr;
     _accDsp = nullptr;
     _gyrDsp = nullptr;
+    
     _capBufL = nullptr;
     _capBufR = nullptr;
     _prcBufL = nullptr;
     _prcBufR = nullptr;
+    
     _accBufX = nullptr;
     _accBufY = nullptr;
     _accBufZ = nullptr;
+    
     _gyrBufX = nullptr;
     _gyrBufY = nullptr;
     _gyrBufZ = nullptr;
+    
     _accHilbertEnvX = nullptr;
     _accHilbertEnvY = nullptr;
     _accHilbertEnvZ = nullptr;

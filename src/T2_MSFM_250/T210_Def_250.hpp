@@ -26,7 +26,7 @@
 // 16바이트 벡터 정렬 강제
 #define SMEA_ALIGN_16     __attribute__((aligned(16)))
 
-// [신규] esp-dsp 버전 체크용 매크로 (v1.8.2)
+// esp-dsp 버전 체크용 매크로 (v1.8.2)
 #define ESP_DSP_VERSION_CHECK_VAL 10802
 
 // 192바이트 규모의 정적 인덱스 룩업 테이블 (내부 SRAM 상주)
@@ -47,7 +47,7 @@ namespace T2_Def {
 // ========================================================================
 namespace Global {
     namespace System {
-        inline constexpr char const* VERSION_STR           = "T240_v250";       // 시스템 펌웨어 식별 버전
+        inline constexpr char const* VERSION_STR           = "MSFM_T2_250";       // 시스템 펌웨어 식별 버전
         inline constexpr char const* SITE_ID_DEF           = "FACTORY_A_LINE_1";  // 기본 설치 현장 및 설비 식별자
         inline constexpr uint16_t    SITE_ID_LEN_MAX       = 32;                  // [이슈 2] 현장 식별자 최대 길이 (매직넘버 제거)
 
@@ -73,7 +73,7 @@ namespace Global {
         inline constexpr uint8_t     PIN_SD_CMD_CONST      = 38;       // SD카드 SPI 커맨드 핀
         inline constexpr uint8_t     PIN_SD_D0_CONST       = 40;       // SD카드 SPI 데이터 핀
         inline constexpr uint8_t     PIN_NOT_SET_CONST     = 0xFF;     // 핀 미할당 방어값
-        inline constexpr uint8_t     PIN_SAFETY_RELAY_CONST = 25;      // [신규] 프리엠프티브 릴레이 제어 핀
+        inline constexpr uint8_t     PIN_SAFETY_RELAY_CONST = 25;      // 프리엠프티브 릴레이 제어 핀
     }  // namespace Hardware
 
     namespace Task {
@@ -111,60 +111,60 @@ namespace Global {
     }  // namespace Path
 
     namespace NVS {
-        inline constexpr char const*  NAMESPACE_CONST    = "t240_sys";  // NVS 파티션 네임스페이스
+        inline constexpr char const*  NAMESPACE_CONST    = "T2_250_sys";  // NVS 파티션 네임스페이스
         inline constexpr char const*  KEY_FILE_SEQ_CONST = "file_seq";  // 시퀀스 번호 저장 키
     }  // namespace NVS
 
     namespace NetLimit {
-        inline constexpr uint16_t     NET_SSID_LEN_MAX                   = 32;   // Wi-Fi SSID 최대 길이
+        inline constexpr uint16_t     NET_SSID_LEN_MAX                 = 32;   // Wi-Fi SSID 최대 길이
         inline constexpr uint16_t     NET_PW_LEN_MAX                   = 64;   // Wi-Fi 비밀번호 최대 길이
         inline constexpr uint16_t     NET_IP_LEN_MAX                   = 16;   // IP 주소 최대 길이
-        inline constexpr uint8_t      NET_MULTI_AP_MAX                   = 3;       // 오토폴백 예비 AP 최대 개수
+        inline constexpr uint8_t      NET_MULTI_AP_MAX                 = 3;       // 오토폴백 예비 AP 최대 개수
         inline constexpr uint16_t     NET_BROKER_LEN_MAX               = 64;   // MQTT 브로커 주소 길이
         inline constexpr uint16_t     NET_ID_LEN_MAX                   = 32;   // MQTT Client ID 최대 길이
-        inline constexpr uint16_t     NET_TOPIC_LEN_MAX                   = 64;   // MQTT 토픽 최대 길이
+        inline constexpr uint16_t     NET_TOPIC_LEN_MAX                = 64;   // MQTT 토픽 최대 길이
         inline constexpr uint32_t     NET_WIFI_DISCONNECT_DELAY_MS_DEF = 100;  // Wi-Fi 재연결 대기 시간
     }  // namespace NetLimit
 
     namespace Net {
-        inline constexpr char const*  WIFI_AP_SSID_DEF         = "SMEA_T240_AP";    // 자체 AP SSID
+        inline constexpr char const*  WIFI_AP_SSID_DEF           = "MSFM_T2_AP";    // 자체 AP SSID
         inline constexpr char const*  WIFI_AP_PW_DEF             = "12345678";        // 자체 AP PW
         inline constexpr char const*  WIFI_AP_IP_DEF             = "192.168.4.1";    // 자체 AP IP
 
-        inline constexpr char const*  NTP_TZ_INFO_CONST         = "KST-9";               // 한국 표준시
+        inline constexpr char const*  NTP_TZ_INFO_CONST          = "KST-9";               // 한국 표준시
         inline constexpr char const*  NTP_SERVER_1_CONST         = "pool.ntp.org";       // 주 NTP 서버
         inline constexpr char const*  NTP_SERVER_2_CONST         = "time.google.com";  // 보조 NTP 서버
-        inline constexpr uint32_t     NTP_SYNC_TIMEOUT_MS_DEF = 5000;               // NTP 타임아웃
+        inline constexpr uint32_t     NTP_SYNC_TIMEOUT_MS_DEF    = 5000;               // NTP 타임아웃
 
-        inline constexpr uint16_t     HTTP_PORT_DEF            = 80;                 // HTTP 포트
-        inline constexpr char const*  WS_URI_CONST             = "/ws";             // 웹소켓 URI
+        inline constexpr uint16_t     HTTP_PORT_DEF              = 80;                 // HTTP 포트
+        inline constexpr char const*  WS_URI_CONST               = "/ws";             // 웹소켓 URI
 
-        inline constexpr uint16_t     MQTT_PORT_DEF             = 1883;             // MQTT 포트
-        inline constexpr char const*  MQTT_ID_DEF                = "T2_MSFM_250_Edge";         // MQTT 클라이언트 ID
-        inline constexpr char const*  MQTT_TOPIC_DEF             = "smea/T2_MSFM_250";         // MQTT 최상위 토픽
-        inline constexpr char const*  MQTT_LWT_DEF               = "smea/T2_MSFM_250/lwt";     // 유언(LWT) 토픽
+        inline constexpr uint16_t     MQTT_PORT_DEF              = 1883;             // MQTT 포트
+        inline constexpr char const*  MQTT_ID_DEF                = "MSFM_T2_001";         // MQTT 클라이언트 ID
+        inline constexpr char const*  MQTT_TOPIC_DEF             = "FACTORY_A_LINE_1/MSFM_T2_001";         // MQTT 최상위 토픽
+        inline constexpr char const*  MQTT_LWT_DEF               = "FACTORY_A_LINE_1/MSFM_T2_001/lwt";     // 유언(LWT) 토픽
         inline constexpr uint8_t      MQTT_PROTO_VER_DEF         = 4;                 // MQTT 버전 (v3.1.1)
-        inline constexpr uint8_t      MQTT_QOS_DEF             = 1;                 // 기본 QoS
+        inline constexpr uint8_t      MQTT_QOS_DEF               = 1;                 // 기본 QoS
     }  // namespace Net
 
     namespace StorageLimit {
-        inline constexpr uint16_t     PATH_LEN_MAX         = 128;                                 // 파일 절대 경로 상한
+        inline constexpr uint16_t     PATH_LEN_MAX       = 128;                                 // 파일 절대 경로 상한
         inline constexpr uint16_t     PREFIX_LEN_MAX     = 16;                                 // 데이터 파일 접두어 상한
-        inline constexpr uint16_t     ROTATE_LIST_MAX     = 32;                                 // 로테이션 목록 상한
-        inline constexpr uint16_t     DIR_FILES_MAX         = 500;                                 // O(N) 지연 방지 파일 상한
+        inline constexpr uint16_t     ROTATE_LIST_MAX    = 32;                                 // 로테이션 목록 상한
+        inline constexpr uint16_t     DIR_FILES_MAX      = 500;                                 // O(N) 지연 방지 파일 상한
         inline constexpr uint32_t     PREALLOC_BYTES_MAX = 10 * System::BYTES_PER_MB_CONST;     // 플래시 선할당 크기
         inline constexpr uint16_t     WATERMARK_HIGH_DEF = 8;                                 // 디스크 플러시 버퍼 임계치
     }  // namespace StorageLimit
 
     namespace Storage {
-        inline constexpr uint8_t      PRE_TRIGGER_SEC_DEF = 3;     // 프리트리거 과거 보존 시간
+        inline constexpr uint8_t      PRE_TRIGGER_SEC_DEF   = 3;     // 프리트리거 과거 보존 시간
         inline constexpr uint32_t     ROTATE_MB_DEF         = 10;     // 로테이션 기준 용량
-        inline constexpr uint32_t     ROTATE_MIN_DEF         = 60;     // 로테이션 기준 시간
-        inline constexpr uint16_t     ROTATE_KEEP_MAX_DEF = 8;     // 파일 최대 보존 개수
+        inline constexpr uint32_t     ROTATE_MIN_DEF        = 60;     // 로테이션 기준 시간
+        inline constexpr uint16_t     ROTATE_KEEP_MAX_DEF   = 8;     // 파일 최대 보존 개수
         inline constexpr uint32_t     IDLE_FLUSH_MS_DEF     = 250;     // 유휴 강제 플러시 시간
 
-        inline constexpr char const*  SD_DIR_RAW_CONST     = "/t2_msfm_250_data/raw";  // 원시 파형 저장 경로
-        inline constexpr char const*  SD_DIR_BIN_CONST     = "/t2_msfm_250_data/bin";  // 특징량 바이너리 저장 경로
+        inline constexpr char const*  SD_DIR_RAW_CONST     = "/MSFM_T2_250_data/raw";  // 원시 파형 저장 경로
+        inline constexpr char const*  SD_DIR_BIN_CONST     = "/MSFM_T2_250_data/bin";  // 특징량 바이너리 저장 경로
     }  // namespace Storage
 
     // 공유 공통 설정 (트리거 등 전역 공통 사항)
@@ -197,16 +197,16 @@ namespace Global {
 // ========================================================================
 namespace Imu {
     namespace Hardware {
-        inline constexpr uint8_t  PIN_CS_CONST             = 10;        // BMI270 SPI CS 핀
-        inline constexpr uint8_t  PIN_INT1_WATERMARK_CONST           = 11;        // [수정] FIFO Watermark 인터럽트 전용 수신 핀 (Core 0 바인딩)
-        inline constexpr uint8_t  PIN_INT2_MOTION_CONST           = 12;        // [신규] Any-Motion 전용 수신 핀 (Core 1 / 외부 Ext0 딥슬립 웨이크업 바인딩)
-        inline constexpr uint32_t SPI_FREQ_HZ_CONST        = 10000000;  // SPI 버스 속도 (10MHz)
+        inline constexpr uint8_t  PIN_CS_CONST              = 10;        // BMI270 SPI CS 핀
+        inline constexpr uint8_t  PIN_INT1_WATERMARK_CONST  = 11;        // FIFO Watermark 인터럽트 전용 수신 핀 (Core 0 바인딩)
+        inline constexpr uint8_t  PIN_INT2_MOTION_CONST     = 12;        // Any-Motion 전용 수신 핀 (Core 1 / 외부 Ext0 딥슬립 웨이크업 바인딩)
+        inline constexpr uint32_t SPI_FREQ_HZ_CONST         = 10000000;  // SPI 버스 속도 (10MHz)
 
         // ---BMI270 내부 인터럽트 및 상태 레지스터 주소 (매직넘버 제로화) ---
-        inline constexpr uint8_t  REG_INT_STATUS_0_ADDR    = 0x1C;      // [신규] 인터럽트 상태 레지스터 0 (Motion 감지 확인용)
-        inline constexpr uint8_t  REG_INT_STATUS_1_ADDR    = 0x1D;      // [신규] 인터럽트 상태 레지스터 1 (FIFO Watermark 확인용)
-        inline constexpr uint8_t  REG_FIFO_WTM_STATUS_BIT  = 0x02;      // [신규] Status 1 내 FIFO Watermark 비트 마스크 (0x02)
-        inline constexpr uint8_t  REG_ANY_MOTION_STATUS_BIT = 0x20;     // [신규] Status 0 내 Any-Motion 감지 비트 마스크 (0x20)
+        inline constexpr uint8_t  REG_INT_STATUS_0_ADDR     = 0x1C;      // 인터럽트 상태 레지스터 0 (Motion 감지 확인용)
+        inline constexpr uint8_t  REG_INT_STATUS_1_ADDR     = 0x1D;      // 인터럽트 상태 레지스터 1 (FIFO Watermark 확인용)
+        inline constexpr uint8_t  REG_FIFO_WTM_STATUS_BIT   = 0x02;      // Status 1 내 FIFO Watermark 비트 마스크 (0x02)
+        inline constexpr uint8_t  REG_ANY_MOTION_STATUS_BIT = 0x20;      // Status 0 내 Any-Motion 감지 비트 마스크 (0x20)
 
 
         inline constexpr uint16_t FIFO_WATERMARK_LIMIT     = 40;        // 40세트 누적 시 워터마크 인터럽트 발생 기본값
@@ -235,16 +235,16 @@ namespace Imu {
 namespace Accel {
     namespace Sensor {
         inline constexpr bool     ENABLE_DEF          = true;      // 가속도 기본 활성화 스위치
-        inline constexpr uint8_t  AXIS_MAX            = 3;      // 물리 축 최대 개수 (X, Y, Z)
-        inline constexpr uint8_t  AXIS_MASK_DEF       = 0b111;  // 기본 활성 축 마스크 (3축 모두)
+        inline constexpr uint8_t  AXIS_MAX            = 3;         // 물리 축 최대 개수 (X, Y, Z)
+        inline constexpr uint8_t  AXIS_MASK_DEF       = 0b111;     // 기본 활성 축 마스크 (3축 모두)
 
         inline constexpr uint32_t RATE_MAX            = 1600;      // 가속도 최대 샘플링 레이트
         inline constexpr uint32_t RATE_DEF            = 1600;      // 기본 샘플링 레이트 (ODR = BMI2_ACC_ODR_1600HZ)
-        inline constexpr uint8_t  RANGE_DEF           = 8;      // 하드웨어 측정 범위 기본값 (±8G 셋팅: BMI2_ACC_RANGE_8G)
+        inline constexpr uint8_t  RANGE_DEF           = 8;         // 하드웨어 측정 범위 기본값 (±8G 셋팅: BMI2_ACC_RANGE_8G)
         inline constexpr uint8_t  ODR_REG_DEF         = 0x0C;      // 레지스터 1600Hz 인덱스값 매핑
-        inline constexpr uint8_t  BWP_REG_DEF         = 0x02;   // Normal 모드 대역폭 매핑 (BMI2_ACC_NORMAL_AVG4)
-        inline constexpr uint8_t  PERF_MODE_DEF       = 0x01;   // 성능 최적화 모드 (BMI2_PERF_OPT_MODE)
-        inline constexpr uint8_t  NOISE_PERF_MODE_DEF = 0x01;   // [이슈 18] 가속도 저소음 최적화 모드 바인딩
+        inline constexpr uint8_t  BWP_REG_DEF         = 0x02;      // Normal 모드 대역폭 매핑 (BMI2_ACC_NORMAL_AVG4)
+        inline constexpr uint8_t  PERF_MODE_DEF       = 0x01;      // 성능 최적화 모드 (BMI2_PERF_OPT_MODE)
+        inline constexpr uint8_t  NOISE_PERF_MODE_DEF = 0x01;      // [이슈 18] 가속도 저소음 최적화 모드 바인딩
 
         inline constexpr uint32_t FFT_SIZE_MAX        = 1024;      // 주파수 분석 최대 해상도
         inline constexpr uint32_t FFT_SIZE_DEF        = 1024;      // [물리 논리 동기화] 시간축 정합을 위한 가속도 분석 윈도우 1024 통일
@@ -252,11 +252,11 @@ namespace Accel {
     }  // namespace Sensor
     namespace FeatureLimit {
         inline constexpr uint8_t  BAND_MAX            = 16;      // 가속도 주파수 대역 감시 최대 개수
-        inline constexpr uint8_t  BAND_DEF            = 8;      // 실제 런타임 연산 기본 개수
-        inline constexpr uint16_t FIR_TAPS_MAX        = 127;  // 가속도 FIR 필터 최대 차수
+        inline constexpr uint8_t  BAND_DEF            = 8;       // 실제 런타임 연산 기본 개수
+        inline constexpr uint16_t FIR_TAPS_MAX        = 127;     // 가속도 FIR 필터 최대 차수
         inline constexpr uint16_t FIR_TAPS_DEF        = 63;      // FIR 필터 기본 차수
 
-        // --- [신규] 힐버트 필터 및 군지연 보정 상수 (31차 FIR) ---
+        // --- 힐버트 필터 및 군지연 보정 상수 (31차 FIR) ---
         inline constexpr uint16_t HILBERT_FIR_TAPS    = 31;
         inline constexpr uint16_t HILBERT_GROUP_DELAY = (HILBERT_FIR_TAPS - 1) / 2; // 15
         

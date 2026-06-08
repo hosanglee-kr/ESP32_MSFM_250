@@ -1,6 +1,6 @@
-# [MSFM_T2_v250] T280_Calibrator 기능 규격서
+# [MSFM_T2_250] T280_Calibrator 기능 규격서
 
-본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 멀티모달 오프라인 보정 및 하드웨어 튜닝 모듈인 `T280_Calibrator` (Calibrator Engine)에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_250** 임베디드 펌웨어의 멀티모달 오프라인 보정 및 하드웨어 튜닝 모듈인 `T280_Calibrator` (Calibrator Engine)에 대한 기능 규격서입니다.
 
 ---
 

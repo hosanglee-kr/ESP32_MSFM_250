@@ -1,6 +1,6 @@
-# [MSFM_T2_v250] T260_Storage 기능 규격서
+# [MSFM_T2_250] T260_Storage 기능 규격서
 
-본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 멀티모달 비동기 대용량 스토리지 모듈인 `T260_Storage` (Storage Manager)에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_250** 임베디드 펌웨어의 멀티모달 비동기 대용량 스토리지 모듈인 `T260_Storage` (Storage Manager)에 대한 기능 규격서입니다.
 
 ---
 

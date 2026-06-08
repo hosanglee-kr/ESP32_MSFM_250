@@ -1,6 +1,6 @@
-# [MSFM_T2_v250] T220_CfgMgr 기능 규격서
+# [MSFM_T2_250] T220_CfgMgr 기능 규격서
 
-본 문서는 **MSFM_T2_v250** 임베디드 펌웨어의 전체 동작 설정을 중앙 관리하는 `T220_CfgMgr` (Config Manager) 모듈에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_250** 임베디드 펌웨어의 전체 동작 설정을 중앙 관리하는 `T220_CfgMgr` (Config Manager) 모듈에 대한 기능 규격서입니다.
 
 ---
 
