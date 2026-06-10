@@ -14,7 +14,7 @@
 
 [T260_Storage_250.hpp](../T260_Storage_250.hpp) 클래스의 공개 API 및 구조 정보는 다음과 같습니다.
 
-### `static CL_T2_StorageManager& getInstance(void)`
+### `static CL_StorageTaskManager& getInstance(void)`
 *   **기능설명**: 비동기 스토리지 매니저의 싱글톤 인스턴스 참조를 획득합니다.
 
 ### `bool init(void)`

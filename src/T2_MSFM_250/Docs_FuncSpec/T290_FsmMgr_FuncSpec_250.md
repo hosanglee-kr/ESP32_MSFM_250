@@ -27,9 +27,9 @@
     3.  하드웨어 프리엠프티브 릴레이 제어 핀(`PIN_SAFETY_RELAY_CONST` = 25번) 모드를 `OUTPUT` 지정하고 안전 하이(`HIGH` = 정상 상태)를 출력합니다.
     4.  공유 컨텍스트 락-프리 메모리(`_sharedCtx`) 및 세션 명령 큐(`_qSessionCmd`)를 생성합니다.
     5.  FreeRTOS 스레드 3종을 생성 및 바인딩합니다:
-        *   `t2_imu_acq` (Core 0, 우선순위 12)
-        *   `t2_aud_proc` (Core 1, 우선순위 6)
-        *   `t2_vib_proc` (Core 1, 우선순위 5)
+        *   `ImuAcqTask` (Core 0, 우선순위 12)
+        *   `AudProcTask` (Core 1, 우선순위 6)
+        *   `VibProcTask` (Core 1, 우선순위 5)
     6.  [T270_Commu](../T270_Commu_250.hpp) 통신 레이어를 초기화하여 부팅 완료를 알립니다.
 *   **반환값**: 서브 모듈 및 스레드 생성 전체 정상 통과 여부.
 

@@ -10,14 +10,14 @@ ESP32-S3 Dual-Core MCU 제약을 극복하고, 고주파수 오디오 수집(42k
 
 | 태스크명              | 실행 함수               |   할당 코어    |   우선순위   |              주기 및 트리거              | 목적 및 설명                                                   |
 | :---------------- | :------------------ | :--------: | :------: | :--------------------------------: | :-------------------------------------------------------- |
-| **`t2_imu_acq`**  | `_imuAcqTask`       | **Core 0** | 12 (최상위) | BMI270 FIFO Watermark ISR (약 25ms) | SPI 버스 점유, FIFO 원시 데이터 고속 인출 및 링버퍼 적재                     |
-| **`t2_aud_proc`** | `_audioProcessTask` | **Core 1** |    6     |     I2S DMA 수신 이벤트 (약 24.3ms)      | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 및 융합 판정/저장 지시 |
-| **`t2_vib_proc`** | `_vibProcessTask`   | **Core 1** |    5     |     1024 샘플 수집 완료 시 (약 640ms)      | 가속도/자이로 축별 누적 링버퍼 데이터를 가져와 FIR/IIR 처리, 특징 연산 및 비동기 저장 지시  |
-| **`t2_storage`**  | `_storageTaskProc`  | **Core 0** |  2 (하위)  |        비동기 스토리지 큐 메시지 수신 시         | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리                    |
+| **`ImuAcqTask`**  | `_imuAcqTask`       | **Core 0** | 12 (최상위) | BMI270 FIFO Watermark ISR (약 25ms) | SPI 버스 점유, FIFO 원시 데이터 고속 인출 및 링버퍼 적재                     |
+| **`AudProcTask`** | `_audioProcessTask` | **Core 1** |    6     |     I2S DMA 수신 이벤트 (약 24.3ms)      | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 및 융합 판정/저장 지시 |
+| **`VibProcTask`** | `_vibProcessTask`   | **Core 1** |    5     |     1024 샘플 수집 완료 시 (약 640ms)      | 가속도/자이로 축별 누적 링버퍼 데이터를 가져와 FIR/IIR 처리, 특징 연산 및 비동기 저장 지시  |
+| **`StorageTask`**  | `_storageTaskProc`  | **Core 0** |  2 (하위)  |        비동기 스토리지 큐 메시지 수신 시         | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리                    |
 
 > [!IMPORTANT]
 > **SPI Lock (뮤텍스) 제어 원칙**:
-> `t2_imu_acq` 태스크와 메인 루프/기타 태스크(`T220_CfgMgr`, `T280_Calibrator` 등)가 SPI 버스에서 경합하지 않도록 `CL_T2_SensorEngine` 내부에 배치된 `_spiLock` Mutex Semaphore를 반드시 통과해야 합니다.
+> `ImuAcqTask` 태스크와 메인 루프/기타 태스크(`T220_CfgMgr`, `T280_Calibrator` 등)가 SPI 버스에서 경합하지 않도록 `CL_T2_SensorEngine` 내부에 배치된 `_spiLock` Mutex Semaphore를 반드시 통과해야 합니다.
 
 ---
 
@@ -35,12 +35,12 @@ sequenceDiagram
     participant Sensor as CL_T2_SensorEngine
     participant DspEng as CL_T2_DspEngine
     participant FeatExt as CL_T2_FeatureExtractor
-    participant Storage as CL_T2_StorageManager
+    participant Storage as CL_StorageTaskManager
     participant Commu as CL_T2_Communicator
 
     Main->>T200: T2_init() 호출
     activate T200
-    Note over T200: 1. Serial (115200) 및 물리 버튼 핀(GPIO 0) 설정<br/>2. T200_handleTriggerISR 인터럽트 바인딩
+    Note over T200: 1. Serial (115200) 설정 <br/>2. 버튼핀(GPIO 0) 설정 및 T200_handleTriggerISR 인터럽트 바인딩
     T200->>FsmMgr: init() 호출
     activate FsmMgr
     
@@ -124,17 +124,17 @@ graph TD
     %% 코어 배정
     subgraph Core0 [Core 0 : 수집 및 물리 디스크 I/O]
         style Core0 fill:#f0f4f8,stroke:#3b5998,stroke-width:2px
-        ISR_Vib[BMI270 Watermark ISR] -->|vTaskNotifyGive| Task_Acq[t2_imu_acq 태스크]
+        ISR_Vib[BMI270 Watermark ISR] -->|vTaskNotifyGive| Task_Acq[ImuAcqTask 태스크]
         Task_Acq -->|SPI DMA / Read| Sensor_Vib[BMI270 Sensor]
         Sensor_Vib -->|LSB to G/Dps 변환 및 캘리브레이션| Ring_Sensor[Sensor Circular Buffers]
         
-        Task_Storage[t2_storage 태스크] -->|SD MMC Write| SD_Card[(SD Card)]
+        Task_Storage[StorageTask 태스크] -->|SD MMC Write| SD_Card[(SD Card)]
     end
 
     subgraph Core1 [Core 1 : DSP 처리 및 추론/판정 엔진]
         style Core1 fill:#f5f6eb,stroke:#8a9a86,stroke-width:2px
-        Task_VibProc[t2_vib_proc 태스크]
-        Task_AudProc[t2_aud_proc 태스크]
+        Task_VibProc[VibProcTask 태스크]
+        Task_AudProc[AudProcTask 태스크]
         
         %% 진동 가공 흐름
         Ring_Sensor -->|SPSC getAccumulatedAccel/Gyro| Task_VibProc
@@ -148,9 +148,9 @@ graph TD
         DSP_Aud -->|extractAudio| Feat_Aud[오디오 특징량 추출 <br/> FFT, 1/3 Octave Timbre, MFCC]
         
         %% 특징량 병합 및 Late-Sync
-        Feat_Aud -->|std::memory_order_acquire 읽기| Shared_Ctx
+        Feat_Aud -->|"std::memory_order_acquire 읽기"| Shared_Ctx
         Shared_Ctx & Feat_Aud -->|Late-Sync 정렬| Tensor_Binder[Dynamic Tensor Binder]
-        Tensor_Binder -->|MFCC (312차원) 조립| Seq_Builder[Sequence Builder]
+        Tensor_Binder -->|"MFCC (312차원) 조립"| Seq_Builder[Sequence Builder]
         Seq_Builder -->|TinyML 입력 융합 텐서| TinyML[TinyML 추론 모델]
 
         %% 진단 및 트리거
@@ -172,13 +172,13 @@ graph TD
 
 ### A. 진동(IMU) 수집 및 가공 흐름 (Core 0 ➔ Core 1)
 1. **ISR 트리거**: BMI270 FIFO의 워터마크 비트가 설정되면 `PIN_INT1_WATERMARK_CONST` 핀이 RISING 엣지로 전환되어 `T245_bmi_watermark_isr` 인터럽트 루틴이 호출됩니다.
-2. **스로틀링 및 노티파이**: ISR은 최소 호출 주기(0.5ms)를 검증하고 `vTaskNotifyGiveFromISR`을 통해 Core 0의 `t2_imu_acq` 태스크를 즉시 기동합니다.
-3. **FIFO 수집**: `t2_imu_acq`는 SPI 버스를 획득하여 BMI270 FIFO 데이터를 긁어와 `_accumX/Y/Z` 링버퍼에 적재합니다.
-4. **가공 및 특징 추출 (Core 1)**: `t2_vib_proc` 태스크가 약 640ms 주기(1024 샘플 완료 시점)로 링버퍼에서 데이터를 가져와 DC 제거, 노치 필터링, RMS 및 MFCC 특징량 연산을 수행합니다.
+2. **스로틀링 및 노티파이**: ISR은 최소 호출 주기(0.5ms)를 검증하고 `vTaskNotifyGiveFromISR`을 통해 Core 0의 `ImuAcqTask` 태스크를 즉시 기동합니다.
+3. **FIFO 수집**: `ImuAcqTask`는 SPI 버스를 획득하여 BMI270 FIFO 데이터를 긁어와 `_accumX/Y/Z` 링버퍼에 적재합니다.
+4. **가공 및 특징 추출 (Core 1)**: `VibProcTask` 태스크가 약 640ms 주기(1024 샘플 완료 시점)로 링버퍼에서 데이터를 가져와 DC 제거, 노치 필터링, RMS 및 MFCC 특징량 연산을 수행합니다.
 5. **공유 메모리 배포**: 가공 완료된 진동 특징 슬롯(`ST_FeatureSlot_Vib_t`)은 `_sharedCtx->vib_slots` 더블 버퍼 중 쓰기 버퍼에 저장된 후, `vib_idx`가 원자적으로 스왑(`std::memory_order_release`)되어 오디오 태스크로 공유됩니다.
 
 ### B. 오디오 수집, 가공 및 Late-Sync 센서 퓨전
-1. **오디오 수집**: I2S DMA 버퍼 수신이 감지되면 Core 1의 `t2_aud_proc` 태스크가 깨어나 `readAudioChunk`를 호출해 1024개의 16비트 오디오 샘플을 wait-free로 가져옵니다.
+1. **오디오 수집**: I2S DMA 버퍼 수신이 감지되면 Core 1의 `AudProcTask` 태스크가 깨어나 `readAudioChunk`를 호출해 1024개의 16비트 오디오 샘플을 wait-free로 가져옵니다.
 2. **오디오 가공**: `processAudio` 및 `extractAudio`가 DC 제거, Notch, FFT 스펙트럼 및 MFCC 계수를 빠르게 연산합니다.
 3. **Late-Sync 정렬 및 융합**: 
    - 오디오 태스크는 `_sharedCtx->vib_idx`를 원자적으로 획득(`std::memory_order_acquire`)하여 가장 최근에 연산된 진동 데이터 슬롯을 가져옵니다.
@@ -194,7 +194,7 @@ graph TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant AudProc as t2_aud_proc 태스크
+    participant AudProc as AudProcTask 태스크
     participant TrigEng as CL_T2_TriggerEngine
     participant SafetyMgr as SafetyLifecycleManager
     participant Interlock as PreemptiveSafetyInterlock
@@ -239,7 +239,7 @@ sequenceDiagram
 
 ## 6. 비동기 이원화 저장소 파일 기입 흐름
 
-SD 카드의 고질적인 물리 쓰기 지연(최대 수백 ms)으로 인해 실시간 데이터 수집 태스크가 영향을 받지 않도록, `t2_storage` 태스크가 비동기 링버퍼 및 대기 전용 프리트리거 메모리를 제어하여 병렬 기입을 처리합니다.
+SD 카드의 고질적인 물리 쓰기 지연(최대 수백 ms)으로 인해 실시간 데이터 수집 태스크가 영향을 받지 않도록, `StorageTask` 태스크가 비동기 링버퍼 및 대기 전용 프리트리거 메모리를 제어하여 병렬 기입을 처리합니다.
 
 ```mermaid
 graph TD

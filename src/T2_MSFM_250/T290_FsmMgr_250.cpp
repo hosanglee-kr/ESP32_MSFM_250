@@ -120,9 +120,9 @@ bool CL_T2_FsmManager::init() {
     _qSessionCmd = xQueueCreate(16, sizeof(uint8_t));
 
     // 비동기 태스크 분리 생성
-    xTaskCreatePinnedToCore(_imuAcqTask,       "ImuAcq",  T2_Def::Global::Task::IMU_ACQ_STACK_SIZE,  this, T2_Def::Global::Task::IMU_ACQ_PRIORITY,  &_hImuAcqTask, T2_Def::Global::Task::CORE_CAPTURE_DEF);
-    xTaskCreatePinnedToCore(_audioProcessTask, "AudProc", T2_Def::Global::Task::AUD_PROC_STACK_SIZE, this, T2_Def::Global::Task::AUD_PROC_PRIORITY, &_hAudioTask,   T2_Def::Global::Task::CORE_PROCESS_DEF);
-    xTaskCreatePinnedToCore(_vibProcessTask,   "VibProc", T2_Def::Global::Task::VIB_PROC_STACK_SIZE, this, T2_Def::Global::Task::VIB_PROC_PRIORITY, &_hVibTask,     T2_Def::Global::Task::CORE_PROCESS_DEF);
+    xTaskCreatePinnedToCore(_imuAcqTask,       "ImuAcqTask",  T2_Def::Global::Task::IMU_ACQ_STACK_SIZE,  this, T2_Def::Global::Task::IMU_ACQ_PRIORITY,  &_hImuAcqTask, T2_Def::Global::Task::CORE_CAPTURE_DEF);
+    xTaskCreatePinnedToCore(_audioProcessTask, "AudProcTask", T2_Def::Global::Task::AUD_PROC_STACK_SIZE, this, T2_Def::Global::Task::AUD_PROC_PRIORITY, &_hAudioTask,   T2_Def::Global::Task::CORE_PROCESS_DEF);
+    xTaskCreatePinnedToCore(_vibProcessTask,   "VibProcTask", T2_Def::Global::Task::VIB_PROC_STACK_SIZE, this, T2_Def::Global::Task::VIB_PROC_PRIORITY, &_hVibTask,     T2_Def::Global::Task::CORE_PROCESS_DEF);
 
     setState(T2_Type::EM_SystemState_t::READY);
     ESP_LOGI(TAG, "v247 Orchestrator Ready with Async Pipeline.");
