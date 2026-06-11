@@ -1234,7 +1234,16 @@ void CL_T2_ConfigManager::serializeToBuffer(char* p_outBuf, size_t p_maxLen) {
 // ============================================================================
 
 CL_T2_WalDriver::CL_T2_WalDriver()
-    : _partition(nullptr), _slotSize(0), _totalSlots(0), _nextSlotIdx(0), _latestSeqId(0) {}
+    : _partition(nullptr), _slotSize(0), _totalSlots(0), _nextSlotIdx(0), _latestSeqId(0) {
+    _walLock = xSemaphoreCreateMutex();
+}
+
+CL_T2_WalDriver::~CL_T2_WalDriver() {
+    if (_walLock) {
+        vSemaphoreDelete(_walLock);
+        _walLock = nullptr;
+    }
+}
 
 bool CL_T2_WalDriver::init() {
     _partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, (esp_partition_subtype_t)0x99, "wal");
@@ -1258,6 +1267,7 @@ bool CL_T2_WalDriver::init() {
 bool CL_T2_WalDriver::loadLatestConfig(T2_Type::ST_DynamicConfig_t& p_cfg) {
     if (!_partition || _totalSlots == 0) return false;
 
+    xSemaphoreTake(_walLock, portMAX_DELAY);
     ST_WalHeader_t bestHeader = {0};
     uint32_t bestSlotIdx = 0xFFFFFFFF;
     bool foundAny = false;
@@ -1291,17 +1301,20 @@ bool CL_T2_WalDriver::loadLatestConfig(T2_Type::ST_DynamicConfig_t& p_cfg) {
             _latestSeqId = bestHeader.sequence_id;
             _nextSlotIdx = (bestSlotIdx + 1) % _totalSlots;
             ESP_LOGI("WAL", "Successfully loaded config from slot %u, sequence_id: %u", bestSlotIdx, _latestSeqId);
+            xSemaphoreGive(_walLock);
             return true;
         }
     }
 
     ESP_LOGW("WAL", "No valid WAL record found. Falling back to LittleFS.");
+    xSemaphoreGive(_walLock);
     return false;
 }
 
 bool CL_T2_WalDriver::commitConfigFast(const T2_Type::ST_DynamicConfig_t& p_cfg) {
     if (!_partition || _totalSlots == 0) return false;
 
+    xSemaphoreTake(_walLock, portMAX_DELAY);
     uint32_t slotIdx = _nextSlotIdx;
     _latestSeqId++;
 
@@ -1314,42 +1327,51 @@ bool CL_T2_WalDriver::commitConfigFast(const T2_Type::ST_DynamicConfig_t& p_cfg)
     esp_err_t err = esp_partition_write(_partition, slotIdx * _slotSize, &header, sizeof(ST_WalHeader_t));
     if (err != ESP_OK) {
         ESP_LOGE("WAL", "Failed to write header to slot %u", slotIdx);
+        xSemaphoreGive(_walLock);
         return false;
     }
 
     err = esp_partition_write(_partition, slotIdx * _slotSize + sizeof(ST_WalHeader_t), &p_cfg, sizeof(T2_Type::ST_DynamicConfig_t));
     if (err != ESP_OK) {
         ESP_LOGE("WAL", "Failed to write config data to slot %u", slotIdx);
+        xSemaphoreGive(_walLock);
         return false;
     }
 
     ESP_LOGI("WAL", "Committed config fast to slot %u, seq: %u", slotIdx, _latestSeqId);
     _nextSlotIdx = (slotIdx + 1) % _totalSlots;
+    xSemaphoreGive(_walLock);
     return true;
 }
 
 bool CL_T2_WalDriver::prepareNextSlot() {
     if (!_partition || _totalSlots == 0) return false;
 
+    xSemaphoreTake(_walLock, portMAX_DELAY);
     uint32_t slotIdx = _nextSlotIdx;
     esp_err_t err = esp_partition_erase_range(_partition, slotIdx * _slotSize, _slotSize);
     if (err != ESP_OK) {
         ESP_LOGE("WAL", "Failed to erase next slot %u", slotIdx);
+        xSemaphoreGive(_walLock);
         return false;
     }
 
     ESP_LOGI("WAL", "Pre-erased slot %u for next write", slotIdx);
+    xSemaphoreGive(_walLock);
     return true;
 }
 
 bool CL_T2_WalDriver::clearAll() {
     if (!_partition) return false;
+    xSemaphoreTake(_walLock, portMAX_DELAY);
     esp_err_t err = esp_partition_erase_range(_partition, 0, _partition->size);
     if (err == ESP_OK) {
         _nextSlotIdx = 0;
         _latestSeqId = 0;
         ESP_LOGI("WAL", "Cleared all WAL slots.");
+        xSemaphoreGive(_walLock);
         return true;
     }
+    xSemaphoreGive(_walLock);
     return false;
 }

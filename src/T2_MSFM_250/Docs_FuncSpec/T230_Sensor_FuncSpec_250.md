@@ -59,6 +59,12 @@
 ### `bool enableWakeOnMotion(float p_threshG, uint16_t p_duration)`
 *   **기능설명**: 딥슬립 및 유휴 절전 상태 진입을 대비하여 BMI270의 `Any-Motion` 센서 기능(인터럽트 2번 바인딩)을 켭니다. 지정 임계 가속도와 연속 시간 요건을 레지스터에 기록합니다.
 
+### `void flushHardwareFifo()`
+*   **기능설명**: FSM 상태 모드 스위칭 시 BMI270 하드웨어 버퍼에 누적되어 있던 이전 모드의 잔여 잔류 데이터를 FIFO 명령 레지스터(`0x5E`) 조작(값 `0xB0` 쓰기)을 통해 강제 플러시하여 특징량 오염을 원천 차단합니다.
+
+### `void restoreFromDeepSleepWakeup()`
+*   **기능설명**: 딥슬립 Wake-up 감지 모드로 동작하던 BMI270 센서의 인터럽트 레지스터 매핑 상태를 해제하고, 원래의 실시간 `MONITORING`을 위한 INT1 FIFO 워터마크 인터럽트 구조로 원상 복구합니다.
+
 ---
 
 ## 3. 핵심 설계 데이터 및 정렬
@@ -66,6 +72,7 @@
 1.  **I2S 오디오 수집 설정 (ICS43434 규격)**:
     *   32비트 고해상도 샘플, 42kHz ODR (`Audio::Sensor::RATE_DEF`), 스테레오 구성, ESP32 내부 APLL 필수 활성화 (`USE_APLL_DEF` = `true`).
     *   **정적 스크래치 버퍼**: DMA 인터럽트 지연을 받지 않도록 `_audioDmaBuffer` 배열을 `alignas(16)` 16바이트 정렬 선언하여 PSRAM에 확보합니다.
+    *   **I2S DMA 청크 분할**: I2S 드라이버 초기화 시 `I2S_DMA_CHUNK_SIZE`를 기준으로 `dma_desc_count`를 자동 계산하여 버스트 청크 수집 시 메모리 찢어짐을 차단합니다.
 2.  **물리 스케일 변환 수식**:
     *   **가속도 변환**:
         $$\text{Value (G)} = \left(\text{Raw LSB} \times \frac{\text{Range G}}{32768}\right) \times \text{Gain} - \text{Offset}$$

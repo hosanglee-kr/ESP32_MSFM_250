@@ -22,10 +22,10 @@
 *   **반환값**: 메모리 버퍼 생성 완료 및 초기 DCT 커널 연산 통과 여부 (`true` / `false`).
 
 ### `void extractAccel(const float* p_inX, const float* p_inY, const float* p_inZ, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_Accel_Config_t& p_accCfg)`
-*   **기능설명**: 3축 가속도 신호로부터 RMS, Crest Factor, Skewness, Kurtosis, 대역별 에너지와 푸리에 파워 스펙트럼 및 진동 MFCC(13차)를 연쇄 계산하여 진동 지표 슬롯에 저장합니다.
+*   **기능설명**: 3축 가속도 신호로부터 RMS, Crest Factor, Skewness, Kurtosis, 대역별 에너지와 푸리에 파워 스펙트럼 및 진동 특징 벡터들을 연쇄 계산하여 진동 지표 슬롯에 저장합니다. (가속도 정책인 `AccelPolicy`에 의해 가속도 MFCC 계산은 생략되고 `0.0f`로 우회 마스킹됩니다.)
 
 ### `void extractGyro(const float* p_inX, const float* p_inY, const float* p_inZ, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_Gyro_Config_t& p_gyrCfg)`
-*   **기능설명**: 자이로 3축 원시 각속도 신호를 1차 차분(각가속도) 도메인으로 변환한 뒤의 단구간 RMS 에너지 및 왜도, 첨도, 대역별 에너지와 드리프트 추정값(자이로 특화)을 산출하여 슬롯을 채웁니다. (위상 왜곡을 초래하는 Zero-Crossing Rate 연산은 전면 폐기되었습니다.)
+*   **기능설명**: 자이로 3축 원시 각속도 신호를 1차 차분(각가속도) 도메인으로 변환한 뒤의 단구간 RMS 에너지 및 왜도, 첨도, 대역별 에너지와 드리프트 추정값(자이로 특화)을 산출하여 슬롯을 채웁니다. (위상 왜곡을 초래하는 Zero-Crossing Rate 연산은 전면 폐기되었으며, `GyroPolicy`에 의해 자이로 MFCC 연산은 `0.0f` 마스킹 처리됩니다.)
 
 ### `void extractAudio(const float* p_audL, const float* p_audR, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_Audio_Config_t& p_audCfg)`
 *   **기능설명**: 좌우 마이크 음원 파형 데이터에 대해 단시간 푸리에 변환(STFT)을 수행하고, 파워 스펙트럼, 켑스트럼 피크 오차 비율 및 2채널 오디오 MFCC와 델타/더블델타 시계열 계수를 연산하고, 32개 1/3 옥타브 밴드 상대 에너지 비율 벡터(Timbre 지표)를 산출해 내어 MFCC와 융합합니다. (다중 반사 왜곡을 일으키던 공간 위상 지표 Coherence 및 IPD는 전면 삭제되었습니다.)

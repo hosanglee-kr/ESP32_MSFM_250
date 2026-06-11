@@ -28,13 +28,18 @@
 
 ### `void runNetwork(void)`
 *   **기능설명**: 메인 루틴의 백그라운드 관리 스레드에서 주기적으로 호출됩니다. 와이파이 물리 연결 유실 시 자동 재결합(Reconnection) 스캔 시도를 유발하며, MQTT 브로커와의 커넥션 실패 시 `_lastMqttRetryMs` 시간을 추적하여 `10초` 주기로 백그라운드 재접속을 오케스트레이션합니다.
+*   **TLS 데드락 예방 가드**: WiFi 연결 직후 잘못된 시스템 연도(1970년) 상태에서 MQTT TLS 인증 실패 및 핸드셰이크 차단(데드락)을 방지하기 위해, NTP 동기 획득 완료(`timeinfo.tm_year > 120`) 시점까지 MQTT 보안 TLS 핸드셰이크 클라이언트 시작(`esp_mqtt_client_start`)을 보류합니다.
+
+### `void recreateMqttClient(const esp_mqtt_client_config_t& new_cfg)`
+*   **기능설명**: 네트워크 및 MQTT 설정 변경 시 핫 리부팅 없이 통신 데몬만 안전하게 재연결을 시도하도록, 기존 MQTT 클라이언트 리소스를 안전히 해제 및 소멸(`esp_mqtt_client_destroy`)한 후 신규 설정 기반 인스턴스로 재할당합니다.
 
 ### `void broadcastBinary(const void* p_buffer, size_t p_bytes)`
 *   **기능설명**: WebSocket 클라이언트들에게 고속 바이너리 메트릭 패킷(파형, 텔레메트리 등)을 일제 브로드캐스팅 전송합니다.
 *   **성능가드**: 수신 측 브라우저의 전송 지연이나 느린 패킷 처리로 인해 ESP32 내부에 소켓 버퍼 백로그(Backlog)가 대량 누적되어 OOM(Out Of Memory) 크래시를 유발하는 현상을 방지하기 위해, 웹소켓 큐 프레임 제한 및 전송 에러 시 자동 연결 끊기 가드를 동시 수행합니다.
 
 ### `bool publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, T2_Type::EM_DetectionResult_t p_result)`
-*   **기능설명**: 룰 엔진 판정 결과 및 오디오/진동 핵심 통계 지표 슬롯을 JSON 메시지로 경량 직렬화 가공하여 MQTT 지정 토픽으로 발행(Publish)합니다. 단, 구조체 슬롯에서 삭제된 오디오 공간 지표 `coh`, `ipd` 할당은 호환성을 위해 `0.0f` 상수로 대치되어 발행되도록 규격이 업데이트되었습니다.
+*   **기능설명**: 룰 엔진 판정 결과 및 오디오/진동 핵심 통계 지표 슬롯을 JSON 메시지로 경량 직렬화 가공하여 MQTT 지정 토픽으로 발행(Publish)합니다. 
+*   **메모리 최적화**: 힙 단편화 방지를 위해 통신용 독자 풀인 `StaticJsonDocument` 풀 `_commuDocPool`을 멤버 변수로 선언해 사용 후 `shrinkToFit()`으로 메모리를 평탄화하며, 웹소켓/웹서버 병렬 처리 시 레이스 컨디션을 방지하기 위해 `_commuLock` 뮤텍스로 보호합니다.
 *   **반환값**: MQTT 커넥션이 양호하여 정상 송출 완료되었는지 여부.
 
 ---

@@ -27,9 +27,11 @@
 *   **동작순서**:
     1.  디버그 모니터용 직렬 통신 포트(`Serial`)를 [T210_Def](../T210_Def_250.hpp)의 `SERIAL_BAUD_CONST` (115200) 속도로 초기화합니다.
     2.  디버그 터미널 구동 안전 대기(`vTaskDelay(100ms)`)를 수행합니다.
-    3.  물리 제어 입력 핀([T210_Def](../T210_Def_250.hpp)의 `PIN_BTN_CONTROL_CONST` = 0번 GPIO)의 모드를 `INPUT_PULLDOWN`으로 설정합니다.
-    4.  물리 입력 단자에 Falling Edge 단방향 트리거 인터럽트를 등록하고 `T200_handleTriggerISR` 핸들러 루틴을 바인딩합니다.
-    5.  `CL_T2_FsmManager` 싱글톤 인스턴스의 `init()` 메서드를 호출하여 설정 로드, 센서 기동, 멀티코어 태스크 생성을 연쇄 처리합니다.
+    3.  [T200_Main_250.h](../T200_Main_250.h) 내부에서 `esp_reset_reason()`을 체크하여 `ESP_RST_POWERON`, `ESP_RST_EXT`, `ESP_RST_BROWNOUT`과 같은 콜드 스타트 부팅 판정 시 RTC 백업 메모리 영역인 `g_CrashDiag`을 전부 `0`으로 강제 초기화하여 쓰레기값에 의한 오작동을 차단합니다.
+    4.  `ESP_RST_PANIC`, `ESP_RST_WDT` 등 소프트웨어 예외 발생으로 인한 웜 리부팅 시에는 `g_CrashDiag` 진단 정보 스냅샷 데이터를 보존하여 재기동 후 MQTT 연결 시점에 긴급 송출합니다.
+    5.  물리 제어 입력 핀([T210_Def](../T210_Def_250.hpp)의 `PIN_BTN_CONTROL_CONST` = 0번 GPIO)의 모드를 `INPUT_PULLDOWN`으로 설정합니다.
+    6.  물리 입력 단자에 Falling Edge 단방향 트리거 인터럽트를 등록하고 `T200_handleTriggerISR` 핸들러 루틴을 바인딩합니다.
+    7.  `CL_T2_FsmManager` 싱글톤 인스턴스의 `init()` 메서드를 호출하여 설정 로드, 센서 기동, 멀티코어 태스크 생성을 연쇄 처리합니다.
 *   **속성**: 빠른 실행과 호출 오버헤드를 막기 위해 `inline` 선언되어 있습니다.
 
 ### `void T2_run(void)`
@@ -47,3 +49,5 @@
     *   인터럽트 발생 시 빠르게 레지스터를 복구하고 명령만 송출하도록 하여, ISR 함수 내부에서 물리 포트를 다시 읽거나 로깅 등의 블로킹 동작을 절대 수행하지 않습니다.
 2.  **디바운싱(Debounce) 안전 장치**:
     *   하드웨어 채터링 방지 회로 없이도 안정적인 모니터링 시작/정지를 유발하기 위해 정밀 소프트웨어 타이머를 이용하여 시간 기반 디바운싱을 강제합니다.
+3.  **크래시 진단 복구 정책 (`ST_CrashDiagnostics_t`)**:
+    *   `RTC_DATA_ATTR` 데코레이션이 달린 `g_CrashDiag` 구조체를 통해 크래시 발생 직전의 분석 결과와 RMS 지표, WDT 재도착 횟수를 영속 보존하여 부팅 즉시 MQTT 긴급 알람 브릿지로 전달합니다.

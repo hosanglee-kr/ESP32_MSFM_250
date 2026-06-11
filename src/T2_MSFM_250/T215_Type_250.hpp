@@ -564,6 +564,14 @@ struct alignas(16) ST_SharedContext_t {
 // ============================================================================
 #pragma pack(push, 1)
 
+struct ST_TriggerReason_t {
+    uint8_t  trigger_axis;        // 0: X, 1: Y, 2: Z, 3: Audio
+    char     metric_name[16];     // 예: "RMS", "BAND_ENERGY"
+    float    measured_value;      // 실제 측정값
+    float    threshold_value;     // 임계값
+    float    excess_ratio;        // 초과율 (measured_value / threshold_value)
+};
+
 struct ST_FileHeader_t {
     char     magic[4];
     uint16_t ver;
@@ -576,8 +584,11 @@ struct ST_FileHeader_t {
     uint8_t  audio_mask; // [수정] 오디오 채널 마스크 배치
     uint8_t  _res;
     uint32_t total;
+    uint64_t trigger_t0;          // T0 절대 타임스탬프 (Monotonic)
+    ST_TriggerReason_t reason;    // 트리거 상세 원인 메타데이터
     char     config_dump[8192];
 };
+
 
 struct ST_WsHeader_t {
     uint8_t  magic;

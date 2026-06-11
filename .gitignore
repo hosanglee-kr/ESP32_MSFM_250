@@ -7,6 +7,8 @@
 .vscode/ipch
 .vscode/arduino.json
 
+.cache/
+
 .codegraph/
 
 src/T2_MSFM_250_wiki/

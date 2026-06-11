@@ -95,7 +95,8 @@ bool CL_T2_Communicator::init() {
 
         _mqttHandle = esp_mqtt_client_init(&v_mqttCfg);
         esp_mqtt_client_register_event(_mqttHandle, (esp_mqtt_event_id_t)MQTT_EVENT_ANY, _mqttEventHandler, this);
-        esp_mqtt_client_start(_mqttHandle);
+        // [수정] NTP 동기가 완료될 때까지 MQTT 기동 유보 (runNetwork에서 체크하여 시작)
+        // esp_mqtt_client_start(_mqttHandle);
     }
 
     _initWebHandlers(); // 웹서버 핸들러 초기화 누락 방지
@@ -277,6 +278,19 @@ bool CL_T2_Communicator::publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& 
     return true;
 }
 
+void CL_T2_Communicator::recreateMqttClient(const esp_mqtt_client_config_t& new_cfg) {
+    if (_mqttHandle) {
+        esp_mqtt_client_stop(_mqttHandle);
+        esp_mqtt_client_destroy(_mqttHandle);
+        _mqttHandle = nullptr;
+    }
+    _mqttHandle = esp_mqtt_client_init(&new_cfg);
+    if (_mqttHandle) {
+        esp_mqtt_client_register_event(_mqttHandle, (esp_mqtt_event_id_t)MQTT_EVENT_ANY, _mqttEventHandler, this);
+        // esp_mqtt_client_start는 runNetwork에서 시간 동기 완료 후 수행
+    }
+}
+
 void CL_T2_Communicator::runNetwork() {
     _ws.cleanupClients();
 
@@ -285,6 +299,19 @@ void CL_T2_Communicator::runNetwork() {
         if (millis() - _lastWifiRetryMs > 10000) {
             WiFi.reconnect();
             _lastWifiRetryMs = millis();
+        }
+    } else if (WiFi.status() == WL_CONNECTED) {
+        // [신규] NTP 동기 완료 시점 감지 및 MQTT 핸들 기동 (TLS 데드락 예방 가드)
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo, 0)) {
+            if (timeinfo.tm_year > 120 && _mqttHandle) { // 2020년 이후로 동기화 완료 판정
+                static bool s_mqttStarted = false;
+                if (!s_mqttStarted) {
+                    ESP_LOGI(TAG, "NTP sync complete. Starting MQTT secure client...");
+                    esp_mqtt_client_start(_mqttHandle);
+                    s_mqttStarted = true;
+                }
+            }
         }
     }
 }

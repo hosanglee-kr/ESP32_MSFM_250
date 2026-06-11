@@ -127,30 +127,35 @@ void MultiRateTimeAligner::injectNewVibSample(const float* raw_feats, uint64_t t
 bool MultiRateTimeAligner::getAlignedVibration(uint64_t audio_ts, float* out_feats) {
     if (!_curr_vib.is_valid) return false;
 
-    // 양방향 타임스탬프 스큐 절댓값 검증 가드 (언더런 및 오버런 동시 차단)
     int64_t skew = static_cast<int64_t>(audio_ts) - static_cast<int64_t>(_curr_vib.timestamp_us);
+
+    // 임계값 초과 시 강제 Drop & Shift (회복 모듈)
     if (std::abs(skew) > static_cast<int64_t>(_max_allowed_skew_us)) {
-        return false; // 정합성 붕괴로 판정하여 안전하게 프레임 드롭
+        ESP_LOGW("T248_TIME", "Clock drift skew detected: %lld us. Soft drop and align.", skew);
+        _prev_vib = _curr_vib;
+        _prev_vib.timestamp_us = audio_ts - 20000; // 가상 오차 보정 시간 임의 주입
+        _curr_vib.timestamp_us = audio_ts;
+        skew = 0;
     }
 
     constexpr size_t VIB_FEAT_CNT = T2_Def::AI::Tensor::MFCC_COEFFS_DEF * T2_Def::AI::Tensor::MFCC_COMPONENTS_DEF * (T2_Def::Accel::Sensor::AXIS_MAX + T2_Def::Gyro::Sensor::AXIS_MAX);
 
-    // 지연 추론(해석 A) 전제: 오디오 프레임이 버퍼링된 상태로 진동 스냅샷 시간축 사이를 순회
-    if (audio_ts >= _prev_vib.timestamp_us && audio_ts <= _curr_vib.timestamp_us) {
-        uint64_t total_delta = _curr_vib.timestamp_us - _prev_vib.timestamp_us;
-        if (total_delta == 0) {
-            std::copy(_curr_vib.features, _curr_vib.features + VIB_FEAT_CNT, out_feats);
-            return true;
-        }
-        float alpha = static_cast<float>(audio_ts - _prev_vib.timestamp_us) / static_cast<float>(total_delta);
-
-        for (size_t i = 0; i < VIB_FEAT_CNT; i++) {
-            // NaN 오염 방지 가드가 선행 완료된 데이터를 보간
-            out_feats[i] = _prev_vib.features[i] + alpha * (_curr_vib.features[i] - _prev_vib.features[i]);
-        }
-    } else {
-        // 경계를 벗어난 과도기/예외 구간은 가장 안전하게 최신 스냅샷 값 유지 (ZOH 폴백)
+    // 보간 연산 및 uint64_t 언더플로우 방어 가드
+    if (_curr_vib.timestamp_us <= _prev_vib.timestamp_us || audio_ts <= _prev_vib.timestamp_us) {
+        // 시간축 역전 또는 비정상 흐름 시 보간을 생략하고 최신 특징량 복제 전달
         std::copy(_curr_vib.features, _curr_vib.features + VIB_FEAT_CNT, out_feats);
+        return true;
+    }
+
+    uint64_t total_delta = _curr_vib.timestamp_us - _prev_vib.timestamp_us;
+    float alpha = static_cast<float>(audio_ts - _prev_vib.timestamp_us) / static_cast<float>(total_delta);
+
+    // 외삽(Extrapolation) 방지를 위한 계수 클램핑
+    if (alpha < 0.0f) alpha = 0.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    for (size_t i = 0; i < VIB_FEAT_CNT; i++) {
+        out_feats[i] = _prev_vib.features[i] + alpha * (_curr_vib.features[i] - _prev_vib.features[i]);
     }
     return true;
 }

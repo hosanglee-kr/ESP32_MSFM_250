@@ -49,3 +49,11 @@
     *   **왜도 판정**: L/R 채널 Skewness $\ge$ `skew_ng_thresh[ch]`
     *   **대역 에너지 판정**: L/R 채널 대역 에너지 $\ge$ `band_thresh[ch][band]`
     *   **켑스트럼 이상 유무**: 타겟 대역 켑스트럼 최고 피크 오차 범주 미달 여부.
+
+3.  **자이로 (Gyro) 임계치 판정 규칙**:
+    자이로 설정 정보 `ST_Gyro_Config_t` 상에 정의된 축별 기준을 초과하면 에러로 판단합니다.
+    *   **RMS 판정**: 축별 RMS $\ge$ `rms_thresh[axis]`
+    *   **첨도 판정**: 축별 Kurtosis $\ge$ `kurt_ng_thresh[axis]`
+    *   **파고율 판정**: 축별 Crest Factor $\ge$ `crest_ng_thresh[axis]`
+    *   **왜도 판정**: 축별 Skewness $\ge$ `skew_ng_thresh[axis]`
+    *   **대역 에너지 판정**: 각 활성 주파수 대역 에너지 $\ge$ `band_thresh[axis][band]`

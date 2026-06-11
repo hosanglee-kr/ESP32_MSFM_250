@@ -11,11 +11,21 @@
 #include <driver/i2s.h>
 #include "SparkFun_BMI270_Arduino_Library.h"
 
-// --- [신규] SPI 우선순위 정의 ---
-enum class EM_SpiPriority {
-    LOW_SETTING = 0,    // 16바이트 슬라이싱 적용 대상 (설정 전송)
-    HIGH_BURST  = 1     // 최우선 FIFO 워터마크 인출 대상 (우회 대상)
+enum class EM_SpiPriority : uint8_t {
+    IMU_FIFO_READ = 0,
+    IMU_REG_WRITE,
+    IMU_TEMP_READ
 };
+
+struct ST_SpiTransaction_t {
+    EM_SpiPriority priority;
+    uint8_t reg_addr;
+    uint8_t* tx_data;
+    uint8_t* rx_data;
+    size_t length;
+    SemaphoreHandle_t done_sem;
+};
+
 
 class CL_T2_SensorEngine {
 private:
@@ -75,6 +85,7 @@ private:
     bool _writeRegs(uint8_t p_reg, const uint8_t* p_data, uint16_t p_len);
     uint8_t _mapAccelRange(uint8_t p_rangeG);
     uint8_t _mapGyroRange(uint16_t p_rangeDps);
+    void _writeRegSingle(uint8_t p_reg, uint8_t p_val);
 
 public:
     // 인터럽트 물리 분리에 따른 상태 확인용 직접 레지스터 읽기 헬퍼
@@ -147,7 +158,24 @@ public:
 
     // 외부에서 SPI 뮤텍스를 참조할 수 있도록 게터 제공 (FsmMgr 제어용)
     SemaphoreHandle_t getSpiLock() const { return _spiLock; }
+
+    // [신규] 하드웨어 FIFO 플러시
+    void flushHardwareFifo();
+
+    // [신규] 딥슬립 Wake-up 설정
+    void prepareDeepSleepWakeup(float wake_g, uint16_t wake_dur);
+
+    // [신규] 딥슬립 복귀 레지스터 초기화
+    void restoreFromDeepSleepWakeup();
+
+    // [신규] I2S DMA 제어
+    void stopI2SDma();
+    void startI2SDma();
+
+    // [신규] 캘리브레이션 오프셋 동적 반영
+    void updateCalibrationOffsets(const float* offsets);
 };
+
 
 
 

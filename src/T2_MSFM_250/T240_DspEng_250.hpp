@@ -66,12 +66,6 @@ public:
         alignas(16) float iir_hpf_state[T2_Def::Gyro::Sensor::AXIS_MAX][2];
         alignas(16) float iir_lpf_coeffs[5];
         alignas(16) float iir_lpf_state[T2_Def::Gyro::Sensor::AXIS_MAX][2];
-        fir_f32_t         fir_inst_hpf[T2_Def::Gyro::Sensor::AXIS_MAX];
-        fir_f32_t         fir_inst_lpf[T2_Def::Gyro::Sensor::AXIS_MAX];
-        alignas(16) float fir_hpf_coeffs[T2_Def::Gyro::FeatureLimit::FIR_TAPS_MAX];
-        alignas(16) float fir_lpf_coeffs[T2_Def::Gyro::FeatureLimit::FIR_TAPS_MAX];
-        alignas(16) float fir_state_hpf[T2_Def::Gyro::Sensor::AXIS_MAX][T2_Def::Gyro::FeatureLimit::FIR_TAPS_MAX];
-        alignas(16) float fir_state_lpf[T2_Def::Gyro::Sensor::AXIS_MAX][T2_Def::Gyro::FeatureLimit::FIR_TAPS_MAX];
     };
 
 private:

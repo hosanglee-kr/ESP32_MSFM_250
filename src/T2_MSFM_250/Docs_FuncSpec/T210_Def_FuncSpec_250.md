@@ -43,7 +43,7 @@
     *   SD 카드 SPI 핀: CLK (GPIO 39), CMD (GPIO 38), D0 (GPIO 40)
     *   프리엠프티브 릴레이: GPIO 25 (안전 차단 인터록 핀)
 *   **Task (FreeRTOS 바인딩)**:
-    *   `STORAGE_STACK_DEF` = 8192 Bytes, 우선순위 = 2
+    *   `STORAGE_STACK_DEF` = 8192 Bytes, 우선순위 = 2 (Core 0 고정 바인딩)
     *   `IMU_ACQ_STACK_SIZE` = 4096 Bytes, 우선순위 = 12 (Core 0 고정 바인딩)
     *   `AUD_PROC_STACK_SIZE` = 8192 Bytes, 우선순위 = 6 (Core 1 고정 바인딩)
     *   `VIB_PROC_STACK_SIZE` = 8192 Bytes, 우선순위 = 5 (Core 1 고정 바인딩)
@@ -72,7 +72,7 @@
 
 ### 3.3 Accel (가속도 파이프라인)
 *   `RATE_DEF` = 1600Hz, `RANGE_DEF` = ±8G (`BMI2_ACC_RANGE_8G`)
-*   `FFT_SIZE_DEF` = 1024 (자이로 ODR과 정렬하여 시간축 정합성 1024 유지)
+*   `FFT_SIZE_DEF` = 1024 (시간축 정합성 1024 유지)
 *   `FIR_TAPS_DEF` = 63 (63차 FIR 필터링)
 *   `HILBERT_FIR_TAPS` = 31 (힐버트 엔벨로프 추출용 31차 필터, 군지연 보정 15샘플 잠금)
 *   **동적 STA/LTA 샘플수 역산**:
@@ -111,9 +111,9 @@
 
 지식 그래프 및 추론 파이프라인에서 FPU/SIMD 연산을 마스킹하거나 활성화하기 위한 Compile-time Policy Traits 구조체입니다.
 
-*   `AccelPolicy`: `enable_mfcc` = false, `enable_fft` = true
-*   `GyroPolicy`: `enable_mfcc` = false, `enable_fft` = true
-*   `AudioPolicy`: `enable_mfcc` = true, `enable_fft` = true
+*   `AccelPolicy`: `enable_mfcc` = false, `enable_fft` = true, `enable_timbre` = false, `enable_band_energy` = true, `band_count` = 8
+*   `GyroPolicy`: `enable_mfcc` = false, `enable_fft` = true, `enable_timbre` = false, `enable_band_energy` = true, `band_count` = 4 (저주파 대역 제한)
+*   `AudioPolicy`: `enable_mfcc` = true, `enable_fft` = true, `enable_timbre` = true, `enable_band_energy` = true, `band_count` = 16
 
 이를 통해 가속도 및 자이로 도메인에서는 MFCC 특징 추출 연산을 전면 생략하고, 오디오 도메인에서만 MFCC 연산을 전담하도록 보장합니다.
 
@@ -125,3 +125,4 @@
     *   가속도/자이로의 STA/LTA 샘플 역산식 버그(1샘플 고착 문제)를 해결하기 위해 `(ODR * duration_ms + 500) / 1000` 공식을 전면 도입하고 반올림을 보장했습니다.
     *   프리엠프티브 차단 인터록용 물리 릴레이 GPIO 25 상수를 `Hardware::PIN_SAFETY_RELAY_CONST` 로 새롭게 선언하여 제어 무결성을 확보했습니다.
     *   자이로 ODR을 가속도 ODR과 1:1 대칭 정렬(1600Hz)하고 FFT 크기를 1024로 고정하여 물리적 비대칭성으로 인한 시퀀스 바인딩 오류를 원천 차단했습니다.
+    *   시간축 타이머 정합 오염 방지를 위해 단조 증가 시간 취득을 강제화하는 `get_monotonic_timestamp_us()` 유틸리티 함수를 제공합니다.

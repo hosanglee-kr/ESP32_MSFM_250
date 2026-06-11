@@ -23,6 +23,20 @@ static CL_T2_FsmManager& g_T200_Fsm_ref = CL_T2_FsmManager::getInstance();
  * - [이슈 해결] ISR 컨텍스트 내에서 느린 digitalRead() API 호출을 원천 차단하여 IRAM_ATTR 실행 시간 및 지연 마진 최적화.
  * - FALLING 엣지 단방향 트리거를 활용해 즉각 CMD_START 명령을 안전하게 디스패치합니다.
  */
+RTC_DATA_ATTR struct ST_CrashDiagnostics_t {
+    uint8_t  last_detection_result;
+    float    last_rms;
+    uint32_t trial_count;
+} g_CrashDiag;
+
+// T200_handleTriggerISR 전방 선언 필요성 해소
+void IRAM_ATTR T200_handleTriggerISR();
+
+/**
+ * @brief 외부 물리 버튼/신호 인터럽트 서비스 루틴
+ * - [이슈 해결] ISR 컨텍스트 내에서 느린 digitalRead() API 호출을 원천 차단하여 IRAM_ATTR 실행 시간 및 지연 마진 최적화.
+ * - FALLING 엣지 단방향 트리거를 활용해 즉각 CMD_START 명령을 안전하게 디스패치합니다.
+ */
 void IRAM_ATTR T200_handleTriggerISR() {
     static uint64_t v_last_us = 0;
     uint64_t v_now_us = esp_timer_get_time();
@@ -44,6 +58,18 @@ inline void T2_init() {
     
     vTaskDelay(pdMS_TO_TICKS(100));
     Serial.println("\n[MSFM_T2] 4-Tier Diagnostic System Booting...");
+
+    // [신규] esp_reset_reason() 검사를 통한 RTC 메모리 크래시 레포트 안전 가드 초기화
+    esp_reset_reason_t v_rstReason = esp_reset_reason();
+    if (v_rstReason == ESP_RST_POWERON || v_rstReason == ESP_RST_EXT || v_rstReason == ESP_RST_BROWNOUT) {
+        Serial.println("[RTC] Cold boot detected. Purging crash diagnostics...");
+        memset(&g_CrashDiag, 0, sizeof(ST_CrashDiagnostics_t));
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        asm volatile("memw");
+    } else {
+        Serial.printf("[RTC] Warm reboot detected (Reason: %d). Preserving diagnostic state. Last RMS: %.4f\n", 
+                      (int)v_rstReason, g_CrashDiag.last_rms);
+    }
 
     // 2. 하드웨어 핀 설정 및 초기 인터럽트 동기화
     pinMode(T2_Def::Global::Hardware::PIN_BTN_CONTROL_CONST, INPUT_PULLDOWN);

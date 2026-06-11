@@ -51,7 +51,7 @@ graph TD
 
 1.  **설정 및 타입 정의**: 시스템 부팅 직후 [T210_Def](../T210_Def_250.hpp)의 전역 상수(SSOT)와 [T215_Type](../T215_Type_250.hpp)의 데이터 규격을 기반으로 모든 파이프라인 버퍼가 정적 선언되며 런타임 설정 매칭이 수행됩니다.
 2.  **수집 (Capture)**: [T230_Sensor](../T230_Sensor_250.hpp) 모듈이 Core 0에서 I2S DMA 인터럽트와 SPI FIFO 이벤트를 통해 데이터를 초고속 수집하고, 멀티코어 간 SPSC 락프리 중계 링버퍼인 [T216_RingBuf](../T216_RingBuf_250.hpp)에 데이터 유실 없이 순환 적재합니다.
-3.  **전처리 (DSP)**: [T240_DspEng](../T240_DspEng_250.hpp)가 SIMD 및 FPU 명령어로 DC 제거, 노치 필터, 대역 필터(IIR/FIR), Hann 윈도잉을 수행합니다. (가속도는 힐버트 변환 포락선 및 2단계 메디안 필터링 적용)
+3.  **전처리 (DSP)**: [T240_DspEng](../T240_DspEng_250.hpp)가 SIMD 및 FPU 명령어로 DC 제거, 노치 필터, 대역 필터(IIR/FIR), Hann 윈도잉을 수행합니다. (가속도는 힐버트 변환 포락선 및 2단계 적응형 메디안 필터링 적용)
 4.  **추출 (Features)**: [T245_FeatExtra](../T245_FeatExtra_250.hpp)가 FFT 스펙트럼, RMS, 왜도, 첨도, 밴드 에너지, [MelFilterbankGenerator](../T246_MelGen_250.hpp)를 사용한 Mel-Filterbank 기반 MFCC(Static, Delta, Delta-Delta)를 생성합니다. (자이로는 ZCR을 폐기하고 1차 차분 RMS 에너지를 채용하며, 오디오는 Coherence/IPD 대신 1/3 옥타브 밴드 상대 에너지 비율 벡터인 Timbre 지표를 도입하여 MFCC와 융합합니다.)
 5.  **조립 및 동기화**: [T248_SeqBuild](../T248_SeqBuild_250.hpp)의 `MultiRateTimeAligner`가 이종 주기(진동 1600Hz, 오디오 42000Hz) 데이터의 시간축 정렬(ZOH 폴백 포함) 및 Traits 정책 마스킹 규격(가속도/자이로 MFCC 연산 생략 및 0.0f 마스킹)이 적용된 신경망 입력 융합 텐서(`DynamicTensorBinder`)를 조립합니다.
 6.  **판정 (Decision)**: [T250_Trigger](../T250_Trigger_250.hpp) 및 `SafetyLifecycleManager`가 특징량 임계치를 분석하여 결함 판정 및 릴레이 비상 차단을 수행합니다.
@@ -68,7 +68,7 @@ ESP32-S3 Dual Core MCU 제약을 극복하고 실시간 수집 마진을 확보�
 | `ImuAcqTask` | **Core 0** | 12 (최상위) | BMI270 FIFO Watermark ISR (약 25ms) | SPI 버스를 배타 점유하여 FIFO 원시 데이터를 고속 인출 및 내부 링버퍼 적재 |
 | `AudProcTask` | **Core 1** | 6 | I2S DMA 수신 이벤트 (약 12.2ms) | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 수행 |
 | `VibProcTask` | **Core 1** | 5 | 1024 샘플 수집 주기 (약 640ms) | 가속도/자이로 축별 누적 링버퍼 데이터를 가져와 FIR/IIR 처리 및 특징 연산 |
-| `StorageTask` | **Core 1** | 2 (하위) | 비동기 스토리지 큐 메시지 수신 시 | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리 |
+| `StorageTask` | **Core 0** | 2 (하위) | 비동기 스토리지 큐 메시지 수신 시 | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리 |
 
 > [!IMPORTANT]
 > **SPI Lock (뮤텍스) 제어 원칙**:
@@ -100,8 +100,8 @@ ESP32-S3 Dual Core MCU 제약을 극복하고 실시간 수집 마진을 확보�
 | [T240_DspEng_250.hpp](../T240_DspEng_250.hpp) | [T240_DspEng_FuncSpec_250.md](./T240_DspEng_FuncSpec_250.md) | SIMD 가속 DC 제거, 노치, IIR/FIR 필터 연산 |
 | [T245_FeatExtra_250.hpp](../T245_FeatExtra_250.hpp) | [T245_FeatExtra_FuncSpec_250.md](./T245_FeatExtra_FuncSpec_250.md) | 파워 스펙트럼 및 MFCC / 델타-델타 계수 이력 연산 |
 | [T246_MelGen_250.hpp](../T246_MelGen_250.hpp) | [T246_MelGen_FuncSpec_250.md](./T246_MelGen_FuncSpec_250.md) | 오디오/IMU 전용 Mel-Scale 삼각 필터 가중치 행렬 생성 |
-| [T248_SeqBuild_250.hpp](../T248_SeqBuild_250.hpp) | [T248_SeqBuild_FuncSpec_250.md](./T248_SeqBuild_250.md) | 멀티레이트 시간 동기화(Aligner) 및 추론용 조립 텐서 관리 |
-| [T250_Trigger_250.hpp](../T250_Trigger_250.hpp) | [T250_Trigger_FuncSpec_250.md](./T250_Trigger_250.md) | 다차원 RMS 및 STA/LTA 비율 판정 룰 엔진 |
+| [T248_SeqBuild_250.hpp](../T248_SeqBuild_250.hpp) | [T248_SeqBuild_FuncSpec_250.md](./T248_SeqBuild_FuncSpec_250.md) | 멀티레이트 시간 동기화(Aligner) 및 추론용 조립 텐서 관리 |
+| [T250_Trigger_250.hpp](../T250_Trigger_250.hpp) | [T250_Trigger_FuncSpec_250.md](./T250_Trigger_FuncSpec_250.md) | 다차원 RMS 및 STA/LTA 비율 판정 룰 엔진 |
 | [T260_Storage_250.hpp](../T260_Storage_250.hpp) | [T260_Storage_FuncSpec_250.md](./T260_Storage_250.md) | PSRAM 링버퍼 비동기 입출력, 프리트리거, 파일 로테이션 |
 | [T270_Commu_250.hpp](../T270_Commu_250.hpp) | [T270_Commu_FuncSpec_250.md](./T270_Commu_FuncSpec_250.md) | AsyncWebServer WebSocket 및 IDF Native MQTT 클라이언트 |
 | [T280_Calibrator_250.hpp](../T280_Calibrator_250.hpp) | [T280_Calibrator_FuncSpec_250.md](./T280_Calibrator_250.md) | Welch's PSD 분석 기반 자동/수동 마이크 EQ 추출 |

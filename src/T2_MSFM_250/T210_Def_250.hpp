@@ -18,6 +18,8 @@
 #include <cmath>
 #include <algorithm>
 #include "esp_attr.h"
+#include "esp_timer.h"
+
 
 // 실행 코드를 플래시 ROM에서 직접 페치 (필터 계수 테이블용)
 #define SMEA_FLASH_RODATA __attribute__((section(".rodata")))
@@ -483,15 +485,29 @@ namespace T2_General {
     struct AccelPolicy {
         static constexpr bool enable_mfcc = false;
         static constexpr bool enable_fft = true;
+        static constexpr bool enable_timbre = false;
+        static constexpr bool enable_band_energy = true;
+        static constexpr int  band_count = 8;
     };
     struct GyroPolicy {
         static constexpr bool enable_mfcc = false;
         static constexpr bool enable_fft = true;
+        static constexpr bool enable_timbre = false;
+        static constexpr bool enable_band_energy = true;
+        static constexpr int  band_count = 4; // 저주파 대역 제한
     };
     struct AudioPolicy {
         static constexpr bool enable_mfcc = true;
         static constexpr bool enable_fft = true;
+        static constexpr bool enable_timbre = true;
+        static constexpr bool enable_band_energy = true;
+        static constexpr int  band_count = 16;
     };
 }
+
+inline uint64_t get_monotonic_timestamp_us() {
+    return static_cast<uint64_t>(esp_timer_get_time());
+}
+
 
 

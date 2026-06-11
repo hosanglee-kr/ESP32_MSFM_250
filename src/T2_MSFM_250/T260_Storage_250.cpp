@@ -26,7 +26,7 @@ CL_T2_StorageManager::CL_T2_StorageManager()
       _accWrittenBytes(0),
       _gyrWrittenBytes(0),
       _sessionStartTick(0),
-
+      _sessionStartUs(0),
 
       // [수정] 분리형 프리트리거 버퍼 포인터 초기화
       _preAudBuf(nullptr),
@@ -62,6 +62,9 @@ CL_T2_StorageManager::CL_T2_StorageManager()
 
     // 전역 자원 제어용 고속 재귀 뮤텍스 생성
     _lock = xSemaphoreCreateRecursiveMutex();
+    _fsLock = xSemaphoreCreateMutex(); // [신규] LittleFS 뮤텍스 생성
+
+    memset(&_triggerReason, 0, sizeof(_triggerReason));
 
     // 경로 및 접두사 버퍼 안전 초기화
     memset(_audBinPath, 0, sizeof(_audBinPath));
@@ -77,6 +80,9 @@ CL_T2_StorageManager::~CL_T2_StorageManager() {
         vTaskDelete(_hStorageTask);
         _hStorageTask = nullptr;
     }
+
+    if (_lock) { vSemaphoreDelete(_lock); _lock = nullptr; }
+    if (_fsLock) { vSemaphoreDelete(_fsLock); _fsLock = nullptr; }
 
     // 프리트리거 도메인 분리 버퍼 해제
     if (_preAudBuf)    { heap_caps_free(_preAudBuf);    _preAudBuf = nullptr; }
@@ -126,9 +132,12 @@ bool CL_T2_StorageManager::init() {
     return true;
 }
 
-bool CL_T2_StorageManager::openSession(const char* p_prefix, const char* p_overrideDir) {
+bool CL_T2_StorageManager::openSession(const char* p_prefix, uint64_t p_triggerTimestamp, const T2_Type::ST_TriggerReason_t& p_reason, const char* p_overrideDir) {
     xSemaphoreTakeRecursive(_lock, portMAX_DELAY);
     if (_sessionOpen) { xSemaphoreGiveRecursive(_lock); return true; }
+
+    _sessionStartUs = p_triggerTimestamp;
+    _triggerReason = p_reason;
 
     strncpy(_currentPrefix, p_prefix, sizeof(_currentPrefix) - 1);
 
@@ -192,11 +201,19 @@ bool CL_T2_StorageManager::openSession(const char* p_prefix, const char* p_overr
     _wavWrittenBytes = 0; _accWrittenBytes = 0; _gyrWrittenBytes = 0;
     _sessionStartTick = (uint32_t)(esp_timer_get_time() / 1000);
 
-    _flushPreBufferToRing();
+    dumpPreTriggerToSession(); // 프리트리거를 세션 파일들로 즉각 덤프
 
     ESP_LOGI(TAG, "Domain Separated Session Opened Successful.");
     xSemaphoreGiveRecursive(_lock);
     return true;
+}
+
+bool CL_T2_StorageManager::openSession(const char* p_prefix, const char* p_overrideDir) {
+    T2_Type::ST_TriggerReason_t defaultReason = {0};
+    defaultReason.trigger_axis = 0xFF;
+    strncpy(defaultReason.metric_name, "MANUAL", sizeof(defaultReason.metric_name) - 1);
+    uint64_t dummyT0 = esp_timer_get_time();
+    return openSession(p_prefix, dummyT0, defaultReason, p_overrideDir);
 }
 
 void CL_T2_StorageManager::closeSession(const char* p_reason) {
@@ -370,6 +387,8 @@ void CL_T2_StorageManager::_writeBinHeader(File& p_file, bool p_isAudio) {
     v_hdr.accel_mask = v_cfg.accel.axis_mask;
     v_hdr.gyro_mask  = v_cfg.gyro.axis_mask;
     v_hdr.audio_mask = (uint8_t)v_cfg.audio.channel_mask;
+    v_hdr.trigger_t0 = _sessionStartUs;
+    v_hdr.reason = _triggerReason;
 
     CL_T2_ConfigManager::getInstance().serializeToBuffer(v_hdr.config_dump, sizeof(v_hdr.config_dump));
     p_file.write((uint8_t*)&v_hdr, sizeof(v_hdr));
@@ -482,43 +501,127 @@ void CL_T2_StorageManager::_processRingIO() {
     }
 }
 
+void CL_T2_StorageManager::dumpPreTriggerToSession() {
+    // 2.21 & 2.8 모순 해결을 위한 스냅샷 바운스 버퍼 도입
+    // _lock을 획득하고 링 버퍼에 있는 데이터를 임시 로컬 메모리 버퍼로 빠르게 일괄 복사한 후 _lock을 즉시 해제
+    xSemaphoreTakeRecursive(_lock, portMAX_DELAY);
+    
+    uint16_t audCount = _preAudCount;
+    uint16_t audReadIdx = (audCount == _preAudCapacity) ? _preAudHead : 0;
+    uint16_t vibCount = _preVibCount;
+    uint16_t vibReadIdx = (vibCount == _preVibCapacity) ? _preVibHead : 0;
+
+    // 임시 복사용 바운스 버퍼를 스택/힙에 임시 확보하여 복사 진행 (SD write는 Lock 밖에서 수행)
+    T2_Type::ST_FeatureSlot_Aud_t* tempAudBuf = nullptr;
+    T2_Type::ST_Raw_Audio_t* tempAudRawBuf = nullptr;
+    T2_Type::ST_FeatureSlot_Vib_t* tempVibBuf = nullptr;
+    T2_Type::ST_Raw_Accel_t* tempAccBuf = nullptr;
+    T2_Type::ST_Raw_Gyro_t* tempGyrBuf = nullptr;
+
+    if (audCount > 0) {
+        tempAudBuf = (T2_Type::ST_FeatureSlot_Aud_t*)heap_caps_malloc(sizeof(T2_Type::ST_FeatureSlot_Aud_t) * audCount, MALLOC_CAP_SPIRAM);
+        tempAudRawBuf = (T2_Type::ST_Raw_Audio_t*)heap_caps_malloc(sizeof(T2_Type::ST_Raw_Audio_t) * audCount, MALLOC_CAP_SPIRAM);
+        for (uint16_t i = 0; i < audCount; i++) {
+            if (tempAudBuf) tempAudBuf[i] = _preAudBuf[audReadIdx];
+            if (tempAudRawBuf) tempAudRawBuf[i] = _preAudRawBuf[audReadIdx];
+            audReadIdx = (audReadIdx + 1) % _preAudCapacity;
+        }
+    }
+
+    if (vibCount > 0) {
+        tempVibBuf = (T2_Type::ST_FeatureSlot_Vib_t*)heap_caps_malloc(sizeof(T2_Type::ST_FeatureSlot_Vib_t) * vibCount, MALLOC_CAP_SPIRAM);
+        tempAccBuf = (T2_Type::ST_Raw_Accel_t*)heap_caps_malloc(sizeof(T2_Type::ST_Raw_Accel_t) * vibCount, MALLOC_CAP_SPIRAM);
+        tempGyrBuf = (T2_Type::ST_Raw_Gyro_t*)heap_caps_malloc(sizeof(T2_Type::ST_Raw_Gyro_t) * vibCount, MALLOC_CAP_SPIRAM);
+        for (uint16_t i = 0; i < vibCount; i++) {
+            if (tempVibBuf) tempVibBuf[i] = _preVibBuf[vibReadIdx];
+            if (tempAccBuf) tempAccBuf[i] = _preAccBuf[vibReadIdx];
+            if (tempGyrBuf) tempGyrBuf[i] = _preGyrBuf[vibReadIdx];
+            vibReadIdx = (vibReadIdx + 1) % _preVibCapacity;
+        }
+    }
+
+    _preAudCount = 0; _preAudHead = 0;
+    _preVibCount = 0; _preVibHead = 0;
+    xSemaphoreGiveRecursive(_lock);
+
+    // Lock 해제 후 안전하게 SD_MMC 카드에 순차 Write 수행
+    if (tempAudBuf && tempAudRawBuf) {
+        for (uint16_t i = 0; i < audCount; i++) {
+            if (_audBinFile) {
+                _audBinFile.write((uint8_t*)&tempAudBuf[i], sizeof(T2_Type::ST_FeatureSlot_Aud_t));
+                _audBinWrittenBytes += sizeof(T2_Type::ST_FeatureSlot_Aud_t);
+            }
+            if (_wavFile) {
+                alignas(16) static float s_interleave[T2_Def::Audio::Sensor::FFT_SIZE_MAX * 2];
+                for (uint32_t j = 0; j < T2_Def::Audio::Sensor::FFT_SIZE_MAX; j++) {
+                    s_interleave[j * 2]     = tempAudRawBuf[i].data[0][j];
+                    s_interleave[j * 2 + 1] = tempAudRawBuf[i].data[1][j];
+                }
+                _wavFile.write((uint8_t*)s_interleave, sizeof(s_interleave));
+                _wavWrittenBytes += sizeof(s_interleave);
+            }
+        }
+    }
+
+    if (tempVibBuf && tempAccBuf && tempGyrBuf) {
+        for (uint16_t i = 0; i < vibCount; i++) {
+            if (_vibBinFile) {
+                _vibBinFile.write((uint8_t*)&tempVibBuf[i], sizeof(T2_Type::ST_FeatureSlot_Vib_t));
+                _vibBinWrittenBytes += sizeof(T2_Type::ST_FeatureSlot_Vib_t);
+                _recordCount++;
+            }
+            if (_accFile) {
+                _accFile.write((uint8_t*)&tempAccBuf[i], sizeof(T2_Type::ST_Raw_Accel_t));
+                _accWrittenBytes += sizeof(T2_Type::ST_Raw_Accel_t);
+            }
+            if (_gyrFile) {
+                _gyrFile.write((uint8_t*)&tempGyrBuf[i], sizeof(T2_Type::ST_Raw_Gyro_t));
+                _gyrWrittenBytes += sizeof(T2_Type::ST_Raw_Gyro_t);
+            }
+        }
+    }
+
+    if (tempAudBuf) heap_caps_free(tempAudBuf);
+    if (tempAudRawBuf) heap_caps_free(tempAudRawBuf);
+    if (tempVibBuf) heap_caps_free(tempVibBuf);
+    if (tempAccBuf) heap_caps_free(tempAccBuf);
+    if (tempGyrBuf) heap_caps_free(tempGyrBuf);
+}
+
 void CL_T2_StorageManager::_flushPreBufferToRing() {
-    // 오디오 프리트리거 드레인
-    if (_preAudCount > 0) {
-        uint16_t v_readIdx = (_preAudCount == _preAudCapacity) ? _preAudHead : 0;
-        for (uint16_t i = 0; i < _preAudCount; i++) {
-            uint16_t v_nextHead = (_asyncAudHead + 1) % CL_T2_StorageManager::ASYNC_RING_CAPACITY;
-            if (v_nextHead == _asyncAudTail) break;
+    dumpPreTriggerToSession();
+}
 
-            _asyncAudRing[_asyncAudHead] = _preAudBuf[v_readIdx];
-            _asyncAudRawRing[_asyncAudHead] = _preAudRawBuf[v_readIdx];
-
-            uint8_t v_slotIdx = _asyncAudHead;
-            _asyncAudHead = v_nextHead;
-            xQueueSend(_qAudStorage, &v_slotIdx, 0);
-            v_readIdx = (v_readIdx + 1) % _preAudCapacity;
-        }
-        _preAudCount = 0; _preAudHead = 0;
+bool CL_T2_StorageManager::saveNoiseProfile(const float* p_profile, size_t p_size) {
+    if (p_profile == nullptr || p_size == 0) return false;
+    xSemaphoreTake(_fsLock, portMAX_DELAY);
+    File v_file = LittleFS.open("/sys/noise_profile.bin", "w");
+    if (!v_file) {
+        xSemaphoreGive(_fsLock);
+        return false;
     }
+    size_t written = v_file.write(reinterpret_cast<const uint8_t*>(p_profile), p_size * sizeof(float));
+    v_file.close();
+    xSemaphoreGive(_fsLock);
+    return (written == p_size * sizeof(float));
+}
 
-    // 진동 프리트리거 드레인
-    if (_preVibCount > 0) {
-        uint16_t v_readIdx = (_preVibCount == _preVibCapacity) ? _preVibHead : 0;
-        for (uint16_t i = 0; i < _preVibCount; i++) {
-            uint16_t v_nextHead = (_asyncVibHead + 1) % CL_T2_StorageManager::ASYNC_RING_CAPACITY;
-            if (v_nextHead == _asyncVibTail) break;
-
-            _asyncVibRing[_asyncVibHead] = _preVibBuf[v_readIdx];
-            _asyncAccRing[_asyncVibHead] = _preAccBuf[v_readIdx];
-            _asyncGyrRing[_asyncVibHead] = _preGyrBuf[v_readIdx];
-
-            uint8_t v_slotIdx = _asyncVibHead;
-            _asyncVibHead = v_nextHead;
-            xQueueSend(_qVibStorage, &v_slotIdx, 0);
-            v_readIdx = (v_readIdx + 1) % _preVibCapacity;
-        }
-        _preVibCount = 0; _preVibHead = 0;
+bool CL_T2_StorageManager::loadNoiseProfile(float* p_profile, size_t p_size) {
+    if (p_profile == nullptr || p_size == 0) return false;
+    xSemaphoreTake(_fsLock, portMAX_DELAY);
+    if (!LittleFS.exists("/sys/noise_profile.bin")) {
+        xSemaphoreGive(_fsLock);
+        return false;
     }
+    File v_file = LittleFS.open("/sys/noise_profile.bin", "r");
+    if (!v_file) {
+        xSemaphoreGive(_fsLock);
+        return false;
+    }
+    size_t read_bytes = v_file.read(reinterpret_cast<uint8_t*>(p_profile), p_size * sizeof(float));
+    v_file.close();
+    xSemaphoreGive(_fsLock);
+    return (read_bytes == p_size * sizeof(float));
 }
 
 void CL_T2_StorageManager::checkRotation() {
@@ -546,7 +649,7 @@ void CL_T2_StorageManager::checkRotation() {
         v_prevPrefix[sizeof(v_prevPrefix) - 1] = '\0';
 
         closeSession("rotation");
-        openSession(v_prevPrefix);
+        openSession(v_prevPrefix, _sessionStartUs, _triggerReason);
     }
 }
 

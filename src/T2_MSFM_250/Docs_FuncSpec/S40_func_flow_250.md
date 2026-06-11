@@ -11,7 +11,7 @@ ESP32-S3 Dual-Core MCU 제약을 극복하고, 고주파수 오디오 수집(42k
 | 태스크명              | 실행 함수               |   할당 코어    |   우선순위   |              주기 및 트리거              | 목적 및 설명                                                   |
 | :---------------- | :------------------ | :--------: | :------: | :--------------------------------: | :-------------------------------------------------------- |
 | **`ImuAcqTask`**  | `_imuAcqTask`       | **Core 0** | 12 (최상위) | BMI270 FIFO Watermark ISR (약 25ms) | SPI 버스 점유, FIFO 원시 데이터 고속 인출 및 링버퍼 적재                     |
-| **`AudProcTask`** | `_audioProcessTask` | **Core 1** |    6     |     I2S DMA 수신 이벤트 (약 24.3ms)      | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 및 융합 판정/저장 지시 |
+| **`AudProcTask`** | `_audioProcessTask` | **Core 1** |    6     |     I2S DMA 수신 이벤트 (약 12.2ms)      | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 및 융합 판정/저장 지시 |
 | **`VibProcTask`** | `_vibProcessTask`   | **Core 1** |    5     |     1024 샘플 수집 완료 시 (약 640ms)      | 가속도/자이로 축별 누적 링버퍼 데이터를 가져와 FIR/IIR 처리, 특징 연산 및 비동기 저장 지시  |
 | **`StorageTask`**  | `_storageTaskProc`  | **Core 0** |  2 (하위)  |        비동기 스토리지 큐 메시지 수신 시         | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리                    |
 
@@ -35,7 +35,7 @@ sequenceDiagram
     participant Sensor as CL_T2_SensorEngine
     participant DspEng as CL_T2_DspEngine
     participant FeatExt as CL_T2_FeatureExtractor
-    participant Storage as CL_StorageTaskManager
+    participant Storage as CL_T2_StorageManager
     participant Commu as CL_T2_Communicator
 
     Main->>T200: T2_init() 호출
@@ -44,7 +44,7 @@ sequenceDiagram
     T200->>FsmMgr: init() 호출
     activate FsmMgr
     
-    FsmMgr->>CfgMgr: init() (JSON 설정 로드)
+    FsmMgr->>CfgMgr: init() (JSON 및 WAL 설정 로드)
     FsmMgr->>Sensor: init() (SPI-BMI270, I2S-ICS43434 핀 & 클럭 맵핑)
     FsmMgr->>DspEng: init() (DC 컷, notch, IIR/FIR 필터 계수 설정)
     FsmMgr->>FeatExt: init() (FFT 버퍼 및 Mel-Filterbank 초기화)
@@ -117,7 +117,7 @@ stateDiagram-v2
 
 ## 4. 실시간 멀티태스킹 데이터 가공 파이프라인 (Real-time Pipeline)
 
-실시간 데이터 파이프라인은 코어 0에서 고속 수집된 원시 데이터를 코어 1로 안전하게 넘기기 위해 **SPSC (Single-Producer Single-Consumer) 락프리 더블 버퍼링 구조**를 채택하고 있습니다. 
+실시간 데이터 파이프라인은 코어 0에서 고속 수집된 원시 데이터를 코어 1로 안전하게 넘기기 위해 **SPSC (Single-Producer Single-Consumer) 락프리 순환 링버퍼 구조**를 채택하고 있습니다. 
 
 ```mermaid
 graph TD
@@ -173,17 +173,17 @@ graph TD
 ### A. 진동(IMU) 수집 및 가공 흐름 (Core 0 ➔ Core 1)
 1. **ISR 트리거**: BMI270 FIFO의 워터마크 비트가 설정되면 `PIN_INT1_WATERMARK_CONST` 핀이 RISING 엣지로 전환되어 `T245_bmi_watermark_isr` 인터럽트 루틴이 호출됩니다.
 2. **스로틀링 및 노티파이**: ISR은 최소 호출 주기(0.5ms)를 검증하고 `vTaskNotifyGiveFromISR`을 통해 Core 0의 `ImuAcqTask` 태스크를 즉시 기동합니다.
-3. **FIFO 수집**: `ImuAcqTask`는 SPI 버스를 획득하여 BMI270 FIFO 데이터를 긁어와 `_accumX/Y/Z` 링버퍼에 적재합니다.
-4. **가공 및 특징 추출 (Core 1)**: `VibProcTask` 태스크가 약 640ms 주기(1024 샘플 완료 시점)로 링버퍼에서 데이터를 가져와 DC 제거, 노치 필터링, RMS 및 MFCC 특징량 연산을 수행합니다.
+3. **FIFO 수집**: `ImuAcqTask`는 SPI 버스를 획득하여 BMI270 FIFO 데이터를 긁어와 링버퍼에 적재합니다.
+4. **가공 및 특징 추출 (Core 1)**: `VibProcTask` 태스크가 약 640ms 주기(1024 샘플 완료 시점)로 링버퍼에서 데이터를 가져와 DC 제거, 노치 필터링, RMS 및 대역 특징량 연산을 수행합니다.
 5. **공유 메모리 배포**: 가공 완료된 진동 특징 슬롯(`ST_FeatureSlot_Vib_t`)은 `_sharedCtx->vib_slots` 더블 버퍼 중 쓰기 버퍼에 저장된 후, `vib_idx`가 원자적으로 스왑(`std::memory_order_release`)되어 오디오 태스크로 공유됩니다.
 
 ### B. 오디오 수집, 가공 및 Late-Sync 센서 퓨전
-1. **오디오 수집**: I2S DMA 버퍼 수신이 감지되면 Core 1의 `AudProcTask` 태스크가 깨어나 `readAudioChunk`를 호출해 1024개의 16비트 오디오 샘플을 wait-free로 가져옵니다.
-2. **오디오 가공**: `processAudio` 및 `extractAudio`가 DC 제거, Notch, FFT 스펙트럼 및 MFCC 계수를 빠르게 연산합니다.
+1. **오디오 수집**: I2S DMA 버퍼 수신이 감지되면 Core 1의 `AudProcTask` 태스크가 깨어나 `readAudioChunk`를 호출해 1024개의 32비트 오디오 샘플을 wait-free로 가져와 정규화합니다.
+2. **오디오 가공**: `processAudio` 및 `extractAudio`가 DC 제거, Notch, FFT 스펙트럼, Timbre 지표 및 MFCC 계수를 빠르게 연산합니다.
 3. **Late-Sync 정렬 및 융합**: 
    - 오디오 태스크는 `_sharedCtx->vib_idx`를 원자적으로 획득(`std::memory_order_acquire`)하여 가장 최근에 연산된 진동 데이터 슬롯을 가져옵니다.
-   - `MultiRateTimeAligner`가 진동(1600Hz)과 오디오(42000Hz) 간 시간차(Skew)를 검증하여 동기화합니다.
-   - 융합 텐서 빌더(`DynamicTensorBinder`)는 오디오 MFCC(78)와 진동 MFCC(234)를 합쳐 312차원의 평탄화된 TinyML 추론 텐서를 최종 조립하고 `SequenceBuilder`에 밀어 넣습니다.
+   - `MultiRateTimeAligner`가 진동(1600Hz)과 오디오(42000Hz) 간 시간차(Skew)를 검증하여 동기화 및 ZOH 폴백 처리를 수행합니다.
+   - 융합 텐서 빌더(`DynamicTensorBinder`)는 오디오 MFCC와 진동 특징을 합쳐 312차원의 평탄화된 TinyML 추론 텐서를 최종 조립하고 `SequenceBuilder`에 밀어 넣습니다.
 
 ---
 
@@ -203,7 +203,7 @@ sequenceDiagram
     AudProc->>TrigEng: runDiagnostic(audSlot, vibSlot)
     activate TrigEng
     Note over TrigEng: RMS 레벨 및 임계 비율 검사
-    TrigEng-->>AudProc: EM_DetectionResult_t 리턴 (예: FAULT_LEVEL_2)
+    TrigEng-->>AudProc: EM_DetectionResult_t 리턴 (예: RULE_AUDIO_NG)
     deactivate TrigEng
 
     alt 진단 결과가 PASS가 아님 (이상 검출)
@@ -281,6 +281,6 @@ graph TD
 
 ### 버스트 기입 제어 및 병목 차단 장치
 * **Internal SRAM 바운스 버퍼 (`_bounceAudFeat` 등)**: 
-  SD 카드 기입 속도를 높이고 DMA 버스트 시 캐시 미스 및 데이터 찢어짐(Data Tearing)을 차단하기 위해, 링버퍼 포인터를 직접 전달하지 않고 16바이트 정렬된 Internal SRAM의 단일 바운스 버퍼 공간으로 데이터를 딥 카피한 후 저장소 파일 기입 라이터 함수를 호출합니다.
+  SD 카드 기입 속도를 높이고 DMA 버스트 시 캐시 미스 및 데이터 찢어짐(Data Tearing)을 차단하기 위해, 링버퍼 포인터를 직접 전달하지 않고 16바이트 정렬된 Internal SRAM의 단일 바운스 버퍼 공간으로 데이터를 복사한 후 저장소 파일 기입 라이터 함수를 호출합니다.
 * **오디오/진동 루프 비동기 저장 속도 밸런싱 (Burst Limit)**:
   `_processRingIO()`의 1회 기동당 오디오 처리는 최대 **8개(burst limit = 8)**, 진동 처리는 최대 **2개(burst limit = 2)**로 제한하여 특정 모달리티의 쓰기 점유율 독점으로 인한 태스크 병목 및 큐 오버플로우를 미연에 차단합니다.

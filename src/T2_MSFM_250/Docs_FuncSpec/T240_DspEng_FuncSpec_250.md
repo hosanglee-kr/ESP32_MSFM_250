@@ -18,11 +18,15 @@
 *   **기능설명**: 생성자로, 초기 상태 플래그를 미초기화 상태(`false`)로 세팅하고 런타임 메모리 포인터들을 `nullptr`로 초기화합니다.
 
 ### `bool init(const T2_Type::ST_DynamicConfig_t& p_cfg)`
-*   **기능설명**: 설정 구조체 정보를 입력받아, 오디오/가속도/자이로 분석용 내부 런타임 구조체(`ST_AudioDspRuntime`, `ST_AccelDspRuntime`, `ST_GyroDspRuntime`) 및 연산 가공용 임시 중간 버퍼들을 힙 영역(PSRAM)에 동적으로 할당하고 초기화합니다.
+*   **기능설명**: 설정 구조체 정보를 입력받아, 오디오/가속도/자이로 분석용 내부 런타임 구조체 및 연산 가공용 임시 중간 버퍼들을 힙 영역(PSRAM)에 동적으로 할당하고 초기화합니다.
 *   **반환값**: 메모리 할당 및 초기 필터 계수 산출 성공 여부.
 
 ### `void reloadFilters(const T2_Type::ST_DynamicConfig_t& p_cfg)`
 *   **기능설명**: 런타임 동작 중에 설정 임계치가 변경(예: Notch 주파수, HPF/LPF 차단 주파수 변경)되었을 때 호출됩니다. 새로운 컷오프 정보를 바탕으로 IIR Biquad 및 FIR 계수를 즉시 재연산하여 메모리에 업데이트합니다.
+
+### `void recalculateFilters(const T2_Type::ST_DynamicConfig_t& p_cfg)`
+*   **기능설명**: 런타임 설정 주파수(Notch, HPF 등) 변경 즉시 DSP 필터 런타임 계수를 재계산 및 갱신합니다. 
+*   **동적 핫스왑 격리**: 노치 필터 계수 `_notch_coeffs` 등 실시간 주파수 변경이 잦은 영역은 플래시 ROM이 아닌 RAM 영역에 상주시켜 런타임 쓰기 예외 발생을 사전에 방어하고, 컴파일 타임 고정 필터 계수(`s_iir_hpf_coeffs` 등)에만 `SMEA_FLASH_RODATA` 플래시 ROM direct 페치 속성을 한정 적용합니다.
 
 ### `void resetStates(void)`
 *   **기능설명**: 모든 필터 채널(X, Y, Z, L, R)에 대한 과거 상태 딜레이 라인(Delay Stage) 이력 버퍼 값을 전부 `0.0f`로 완전 소거하여 이전 연산 이력의 간섭을 차단합니다.
@@ -45,22 +49,7 @@
     4.  **Notch 필터 및 대역 필터**: 60Hz/120Hz Notch 및 IIR/FIR 밴드 필터링 적용.
 
 ### `void processGyro(const float* p_inX, const float* p_inY, const float* p_inZ, float* p_outX, float* p_outY, float* p_outZ, uint32_t p_len, const T2_Type::ST_Gyro_Config_t& p_gyrCfg)`
-*   **기능설명**: 자이로 3축 센서 수집 신호에 대해 1차 차분 신호 전처리 및 IIR/FIR 밴드 필터링을 수행합니다.
-
----
-
-## 2.2 PSRAM 및 캐시 일관성 (Cache Coherency) 설계
-
-대형 FFT 누적 윈도우 버퍼를 외부 PSRAM에 배치하고 GDMA를 이용해 내부 SRAM 임시 버퍼로 고속 전송할 때, L1 캐시 불일치로 인한 데이터 오염을 방지하기 위해 ESP32-S3 저수준 ROM 캐시 API 헤더 `<esp32s3/rom/cache.h>`를 이용하여 캐시 제어를 수행합니다.
-
-- **FFT 연산 개시 전**: CPU L1 캐시를 강제 무효화하여 이전 수집 주기의 낡은 데이터가 잔류하는 것을 방지합니다.
-  ```cpp
-  Cache_Invalidate_Addr((uint32_t)_sramFftPing, size);
-  ```
-- **FFT 연산 완료 후**: 물리 메모리와 캐시 정합성을 동기화하기 위해 Dirty 플래시 플래그에 기인한 Write-back 캐시 플러시를 즉시 실행합니다.
-  ```cpp
-  Cache_WriteBack_Addr((uint32_t)_sramFftPing, size);
-  ```
+*   **기능설명**: 자이로 3축 센서 수집 신호에 대해 1차 차분 신호 전처리 및 경량 IIR 밴드 필터링을 수행합니다. (SRAM 절감을 위해 고차 FIR 계수와 255/127차 상태 배열은 완전히 제거하고 경량 3축 x 4차 IIR 바이쿼드 계수/상태 버퍼 구조체인 `ST_GyroDspRuntime`로 대체되었습니다.)
 
 ---
 
@@ -80,3 +69,6 @@
     *   Sinc 함수 계수 ($n = -\frac{N-1}{2} \dots \frac{N-1}{2}$):
         $$h[n] = \frac{\sin(2\pi \cdot f_c \cdot n / f_s)}{\pi \cdot n}$$
     *   $h[0] = \frac{2f_c}{f_s}$ 로 정의한 후 Hann Window $w[n]$을 곱해 계수 차단 마진을 정립합니다.
+
+3.  **복소수 FFT 연산을 위한 2*N 구조 강제화**:
+    복소수 FFT 연산 수행 시 발생하는 인덱스 오버플로우 메모리 붕괴(Memory Corruption)를 차단하기 위해 실수 데이터 복소 버퍼 복사 시 짝수 인덱스는 실수부로, 홀수 인덱스는 허수부(`0.0f`)로 교차 배치하여 `2*N` 버퍼 크기를 강제 동기화합니다.

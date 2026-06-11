@@ -34,6 +34,9 @@ private:
     uint32_t _recordCount;
     uint32_t _rotationSubSeq;
 
+    uint64_t _sessionStartUs; // [신규] 프리트리거 T0 절대 시간축 기록용
+    T2_Type::ST_TriggerReason_t _triggerReason; // [신규] 트리거 원인 기록용
+
 	// 도메인별 분리형 파일 디스크립터
 	File _audBinFile;    // 오디오 특징량 (.aud.bin)
     File _vibBinFile;    // 진동 특징량 (.vib.bin)
@@ -71,6 +74,7 @@ private:
 
     uint16_t          _indexCount;
     SemaphoreHandle_t _lock;
+    SemaphoreHandle_t _fsLock; // [신규] LittleFS 다중 접근 방지 뮤텍스
 
 	// 도메인별 비동기 전송용 프리토스 고속 큐 핸들 (인덱스만 전송)
     QueueHandle_t _qAudStorage;
@@ -118,6 +122,7 @@ public:
     }
 
     bool init();
+    bool openSession(const char* p_prefix, uint64_t p_triggerTimestamp, const T2_Type::ST_TriggerReason_t& p_reason, const char* p_overrideDir = nullptr);
     bool openSession(const char* p_prefix, const char* p_overrideDir = nullptr);
     void closeSession(const char* p_reason);
 
@@ -137,6 +142,15 @@ public:
     bool attemptRecovery();
     bool isSessionOpen() const { return _sessionOpen; }
     bool hasIoError() const { return _ioError; }
+
+    // [신규] 프리트리거를 세션 오픈 시 덤프
+    void dumpPreTriggerToSession();
+
+    // [신규] 노이즈 프로필 영속화 기능
+    bool saveNoiseProfile(const float* p_profile, size_t p_size);
+    bool loadNoiseProfile(float* p_profile, size_t p_size);
+
+    SemaphoreHandle_t getFsLock() { return _fsLock; }
 
 private:
     void _allocateBuffers();

@@ -236,11 +236,13 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
         // OTA 상태 전이 명령
         case T2_Type::EM_SystemCommand_t::CMD_OTA_START:
             ESP_LOGW(TAG, "OTA Update Started. Entering MAINTENANCE mode.");
+            prepareForOta();
             setState(T2_Type::EM_SystemState_t::MAINTENANCE);
             break;
         case T2_Type::EM_SystemCommand_t::CMD_OTA_END:
             ESP_LOGI(TAG, "OTA Update Ended.");
             if (_state == T2_Type::EM_SystemState_t::MAINTENANCE) {
+                resumeFromOtaFailure();
                 setState(T2_Type::EM_SystemState_t::READY);
             }
             break;
@@ -274,7 +276,14 @@ void CL_T2_FsmManager::runMaintenance() {
     CL_T2_ConfigManager::getInstance().checkLazyWrite();
     _comm.runNetwork();
 
-    if (_storage.hasIoError()) _storage.attemptRecovery();
+    if (_storage.hasIoError()) {
+        if (_state != T2_Type::EM_SystemState_t::ERROR) {
+            ESP_LOGE(TAG, "Storage physical IO error detected! Transiting to ERROR state.");
+            setState(T2_Type::EM_SystemState_t::ERROR);
+            // 실시간 텔레메트리 송출을 뮤팅하고 에러 보고 전송할 수 있는 준비 상태로 FSM 연동
+        }
+        _storage.attemptRecovery();
+    }
 
     // 유휴 상태 자동 교정 트리거 (audio.auto_idle_min 적용)
     if (_state == T2_Type::EM_SystemState_t::READY) {
@@ -528,45 +537,11 @@ void CL_T2_FsmManager::_broadcastStreams(const T2_Type::ST_FeatureSlot_Aud_t& p_
                                          const float* p_rawAudL, const float* p_rawAudR) {
     const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
 
-    // 1. Telemetry 패킷 매핑
+    // 1. Telemetry 패킷 매핑 및 전송
     _accTele += _telemetryHz;
     if (_accTele >= 100) {
         _accTele -= 100;
-        _pktTele->header.magic  = 0xAA;
-        _pktTele->header.type   = (uint8_t)T2_Type::EM_StreamType_t::TELEMETRY;
-        _pktTele->header.len    = sizeof(T2_Type::ST_PktTelemetry_t) - sizeof(T2_Type::ST_WsHeader_t);
-        _pktTele->header.source = 0;
-        _pktTele->header.stage  = (uint8_t)_state;
-
-        _pktTele->sys_state      = (uint8_t)_state;
-        _pktTele->detect_result  = (uint8_t)p_audSlot.header.src; // 융합 트리거 결과 연동
-        _pktTele->trial_no       = p_audSlot.header.trial;
-        _pktTele->trigger_source = p_audSlot.header.src;
-
-        _pktTele->accel_mask     = p_vibSlot.header.accel_mask;
-        _pktTele->gyro_mask      = p_vibSlot.header.gyro_mask;
-        _pktTele->audio_mask     = p_audSlot.header.audio_mask;
-        _pktTele->payload_type   = (uint8_t)T2_Type::EM_DataPayloadType_t::VIB_AUDIO_BOTH;
-
-        _pktTele->accel_ts  = p_vibSlot.header.ts;
-        _pktTele->gyro_ts   = p_vibSlot.header.ts;
-        _pktTele->audio_ts  = p_audSlot.header.ts;
-        _pktTele->temp      = p_audSlot.header.temp;
-
-        // 가속도 16밴드 에너지 복사 (0번 축/대표 축 기준)
-        memcpy(_pktTele->accel_band_energy, p_vibSlot.accel.band_energy[0], sizeof(_pktTele->accel_band_energy));
-
-        // 자이로 하위 2개 저주파 밴드 복사 (0번 축/대표 축 기준)
-        _pktTele->gyro_rms_energy[0] = p_vibSlot.gyro.band_energy[0][0];
-        _pktTele->gyro_rms_energy[1] = p_vibSlot.gyro.band_energy[0][1];
-
-        // 오디오 1/3 옥타브 대역 복사
-        memcpy(_pktTele->audio_timbre_bands, p_audSlot.audio.timbre_bands, sizeof(_pktTele->audio_timbre_bands));
-
-        // 오디오 MFCC 계수 복사 (13차원)
-        memcpy(_pktTele->audio_mfcc, p_audSlot.mfcc, sizeof(_pktTele->audio_mfcc));
-
-        _comm.broadcastBinary(_pktTele, sizeof(T2_Type::ST_PktTelemetry_t));
+        broadcastTelemetryPayload(p_vibSlot, p_audSlot);
     }
 
     // 2. Waveform 파형 전송 전처리
@@ -721,5 +696,66 @@ void CL_T2_FsmManager::processManualReset() {
         _interlock->clearEmergencyLatch();
     }
     setState(T2_Type::EM_SystemState_t::READY);
+}
+
+void CL_T2_FsmManager::prepareForOta() {
+    ESP_LOGW(TAG, "Suspending sensor interrupts and DMA for OTA flash write...");
+    // 1. 센서 Watermark 인터럽트 분리
+    detachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST));
+    // 2. I2S DMA 일시 중단
+    _sensor.stopI2SDma();
+    // 3. 가공 스레드/태스크 일시 중단
+    if (_hAudioTask) vTaskSuspend(_hAudioTask);
+    if (_hVibTask)   vTaskSuspend(_hVibTask);
+}
+
+void CL_T2_FsmManager::resumeFromOtaFailure() {
+    ESP_LOGW(TAG, "OTA failure or ended. Resuming sensor processing pipeline...");
+    // 1. 센서 인터럽트 복구 및 재매핑 (Main 헤더에 정의된 handle 함수 호출)
+    extern void T200_handleTriggerISR();
+    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T200_handleTriggerISR, RISING);
+    // 2. I2S DMA 재가동
+    _sensor.startI2SDma();
+    // 3. 가공 태스크 Resume
+    if (_hAudioTask) vTaskResume(_hAudioTask);
+    if (_hVibTask)   vTaskResume(_hVibTask);
+}
+
+void CL_T2_FsmManager::broadcastTelemetryPayload(const T2_Type::ST_FeatureSlot_Vib_t& p_vib, const T2_Type::ST_FeatureSlot_Aud_t& p_aud) {
+    if (!_comm.hasActiveWebsockets()) return;
+
+    // 16바이트 정렬을 만족하도록 alignas 선언
+    alignas(16) T2_Type::ST_PktTelemetry_t v_pkt;
+    memset(&v_pkt, 0, sizeof(v_pkt));
+
+    v_pkt.header.magic       = 0xAA;
+    v_pkt.header.type        = (uint8_t)T2_Type::EM_StreamType_t::TELEMETRY;
+    v_pkt.header.len         = sizeof(T2_Type::ST_PktTelemetry_t) - sizeof(T2_Type::ST_WsHeader_t);
+    v_pkt.header.stage       = (uint8_t)_state;
+    v_pkt.header.source      = 0;
+
+    v_pkt.sys_state          = (uint8_t)_state;
+    v_pkt.detect_result      = (uint8_t)p_aud.header.src; // 융합 판정 결과 바인딩
+    v_pkt.trial_no           = p_aud.header.trial;
+    v_pkt.trigger_source     = p_aud.header.src;
+
+    v_pkt.accel_mask         = p_vib.header.accel_mask;
+    v_pkt.gyro_mask          = p_vib.header.gyro_mask;
+    v_pkt.audio_mask         = p_aud.header.audio_mask;
+    v_pkt.payload_type       = (uint8_t)T2_Type::EM_DataPayloadType_t::VIB_AUDIO_BOTH;
+
+    v_pkt.accel_ts           = p_vib.header.ts;
+    v_pkt.gyro_ts            = p_vib.header.ts;
+    v_pkt.audio_ts           = p_aud.header.ts;
+    v_pkt.temp               = p_aud.header.temp;
+
+    // 특징량 복사 및 구조체 패킹 (Zero-Copy 16B aligned 복사 준수)
+    std::copy(p_vib.accel.band_energy[0], p_vib.accel.band_energy[0] + 16, v_pkt.accel_band_energy);
+    v_pkt.gyro_rms_energy[0] = p_vib.gyro.band_energy[0][0];
+    v_pkt.gyro_rms_energy[1] = p_vib.gyro.band_energy[0][1];
+    std::copy(p_aud.audio.timbre_bands, p_aud.audio.timbre_bands + 32, v_pkt.audio_timbre_bands);
+    std::copy(p_aud.mfcc, p_aud.mfcc + 13, v_pkt.audio_mfcc);
+
+    _comm.broadcastBinary(reinterpret_cast<uint8_t*>(&v_pkt), sizeof(v_pkt));
 }
 

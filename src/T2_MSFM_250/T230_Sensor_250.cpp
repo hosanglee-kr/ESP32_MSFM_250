@@ -700,6 +700,18 @@ uint8_t CL_T2_SensorEngine::_readRegSingle(uint8_t p_reg) {
     return v_val;
 }
 
+// [신규] 단일 레지스터 쓰기 함수
+void CL_T2_SensorEngine::_writeRegSingle(uint8_t p_reg, uint8_t p_val) {
+    xSemaphoreTake(_spiLock, portMAX_DELAY);
+    _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
+    digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
+    _spi.transfer(p_reg & 0x7F);
+    _spi.transfer(p_val);
+    digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
+    _spi.endTransaction();
+    xSemaphoreGive(_spiLock);
+}
+
 // SPI 버스를 점유하여 센서 레지스터로부터 데이터를 버스트 수신합니다. (p_reg: 대상 레지스터 번호, p_data: 수신용 배열 버퍼, p_len: 크기 byte, 반환값: 성공 여부)
 bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_len) {
     // FIFO 데이터 읽기는 최우선 BURST(HIGH_BURST) 대상이므로 슬라이싱하지 않고 우회함.
@@ -708,7 +720,7 @@ bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_le
         uint16_t read = 0;
         while (read < p_len) {
             uint16_t chunk = (p_len - read > 16) ? 16 : (p_len - read);
-            
+
             xSemaphoreTake(_spiLock, portMAX_DELAY);
             _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
             digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
@@ -718,7 +730,7 @@ bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_le
             digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
             _spi.endTransaction();
             xSemaphoreGive(_spiLock);
-            
+
             read += chunk;
             vTaskDelay(0); // 타스크 양보
         }
@@ -744,7 +756,7 @@ bool CL_T2_SensorEngine::_writeRegs(uint8_t p_reg, const uint8_t* p_data, uint16
         uint16_t sent = 0;
         while (sent < p_len) {
             uint16_t chunk = (p_len - sent > 16) ? 16 : (p_len - sent);
-            
+
             xSemaphoreTake(_spiLock, portMAX_DELAY);
             _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
             digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
@@ -753,7 +765,7 @@ bool CL_T2_SensorEngine::_writeRegs(uint8_t p_reg, const uint8_t* p_data, uint16
             digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
             _spi.endTransaction();
             xSemaphoreGive(_spiLock);
-            
+
             sent += chunk;
             vTaskDelay(0); // 타스크 양보
         }
@@ -781,3 +793,66 @@ float CL_T2_SensorEngine::readTemperatureSensor() {
     float v_tempC = (float)v_rawTemp / Imu::Hardware::TEMP_SCALE_CONST + Imu::Hardware::TEMP_OFFSET_CONST;
     return v_tempC;
 }
+
+// [신규] 하드웨어 FIFO 플러시
+void CL_T2_SensorEngine::flushHardwareFifo() {
+    if (!_isBmiInit) return;
+    _writeRegSingle(0x5E, 0xB0); // FIFO flush command write (0xB0 to CMD register 0x7E/0x5E)
+    vTaskDelay(pdMS_TO_TICKS(5));
+}
+
+// [신규] 딥슬립 Wake-up 설정
+void CL_T2_SensorEngine::prepareDeepSleepWakeup(float wake_g, uint16_t wake_dur) {
+    if (!_isBmiInit) return;
+    // 1. BMI270 Any-Motion 감지 레지스터 주파수 및 임계값 설정
+    _writeRegSingle(0x5F, 0x01); // Any-motion feature enable
+    float v_lsbMg = Imu::Hardware::ANY_MOTION_LSB_2G_MG * ((float)_accelRange / 2.0f);
+    uint8_t threshold = (uint8_t)(wake_g * 1000.0f / v_lsbMg);
+    _writeRegSingle(0x60, threshold); // Threshold write
+
+    // Duration 설정 (30~45번 라인 등 Any-Motion 상세 명세에 맞춘 duration 필드)
+    _writeRegSingle(0x61, (uint8_t)(wake_dur & 0xFF));
+
+    // 2. BMI270 INT2 핀 매핑 (모션 감지 시 RISING)
+    _writeRegSingle(0x54, 0x04); // Map any-motion interrupt to INT2
+}
+
+// [신규] 딥슬립 복귀 레지스터 초기화
+void CL_T2_SensorEngine::restoreFromDeepSleepWakeup() {
+    if (!_isBmiInit) return;
+    ESP_LOGI(TAG, "Restoring BMI270 registers from sleep wakeup mode...");
+    // 1. Any-motion 기능 비활성화 및 설정 초기화
+    _writeRegSingle(0x5F, 0x00);
+    _writeRegSingle(0x60, 0x00);
+    // 2. 인터럽트 매핑을 원래의 FIFO Watermark (INT1 RISING) 구조로 원복
+    _writeRegSingle(0x53, 0x08); // Map FIFO watermark to INT1
+    _writeRegSingle(0x54, 0x00); // Unmap from INT2
+}
+
+// [신규] I2S DMA 제어
+void CL_T2_SensorEngine::stopI2SDma() {
+    if (_isI2sInit) {
+        i2s_stop((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST);
+    }
+}
+
+void CL_T2_SensorEngine::startI2SDma() {
+    if (_isI2sInit) {
+        clearAudioBuffer();
+        i2s_start((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST);
+    }
+}
+
+// [신규] 캘리브레이션 오프셋 동적 반영
+void CL_T2_SensorEngine::updateCalibrationOffsets(const float* offsets) {
+    if (offsets == nullptr) return;
+    // offsets 순서: Accel X/Y/Z, Gyro X/Y/Z
+    _accOffsetX = offsets[0];
+    _accOffsetY = offsets[1];
+    _accOffsetZ = offsets[2];
+    _gyrOffsetX = offsets[3];
+    _gyrOffsetY = offsets[4];
+    _gyrOffsetZ = offsets[5];
+    ESP_LOGI(TAG, "Calibration offsets hot-swapped.");
+}
+

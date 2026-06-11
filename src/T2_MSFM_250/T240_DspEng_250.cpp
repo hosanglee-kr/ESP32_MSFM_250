@@ -303,27 +303,6 @@ void CL_T2_DspEngine::reloadFilters(const T2_Type::ST_DynamicConfig_t& p_cfg) {
         if (v_dsp.iir_lpf.en) {
             _calcIirCoeffs(v_dsp.iir_lpf.cutoff, v_dsp.iir_lpf.q, _gyrDsp->iir_lpf_coeffs, p_gyrSampleRate, false);
         }
-
-		uint16_t hpf_taps = v_dsp.hpf.taps;
-		if (v_dsp.hpf.en && (hpf_taps % 2 == 0)) {
-			ESP_LOGW(TAG, "FIR HPF taps must be odd, adjusting %d -> %d", hpf_taps, hpf_taps+1);
-			hpf_taps += 1;
-		}
-
-        if (v_dsp.hpf.en && hpf_taps > 0) {
-            _generateFirHpf(_gyrDsp->fir_hpf_coeffs, hpf_taps, v_dsp.hpf.cutoff, p_gyrSampleRate);
-            for (int i = 0; i < T2_Def::Gyro::Sensor::AXIS_MAX; i++) {
-                memset(_gyrDsp->fir_state_hpf[i], 0, sizeof(_gyrDsp->fir_state_hpf[i]));
-                dsps_fir_init_f32(&_gyrDsp->fir_inst_hpf[i], _gyrDsp->fir_hpf_coeffs, _gyrDsp->fir_state_hpf[i], hpf_taps);
-            }
-        }
-        if (v_dsp.lpf.en && v_dsp.lpf.taps > 0) {
-            _generateFirLpf(_gyrDsp->fir_lpf_coeffs, v_dsp.lpf.taps, v_dsp.lpf.cutoff, p_gyrSampleRate);
-            for (int i = 0; i < T2_Def::Gyro::Sensor::AXIS_MAX; i++) {
-                memset(_gyrDsp->fir_state_lpf[i], 0, sizeof(_gyrDsp->fir_state_lpf[i]));
-                dsps_fir_init_f32(&_gyrDsp->fir_inst_lpf[i], _gyrDsp->fir_lpf_coeffs, _gyrDsp->fir_state_lpf[i], v_dsp.lpf.taps);
-            }
-        }
     }
 
     uint16_t v_taps = 0;
@@ -362,8 +341,6 @@ void CL_T2_DspEngine::resetStates() {
         memset(_gyrDsp->notch2_state, 0, sizeof(_gyrDsp->notch2_state));
         memset(_gyrDsp->iir_hpf_state, 0, sizeof(_gyrDsp->iir_hpf_state));
         memset(_gyrDsp->iir_lpf_state, 0, sizeof(_gyrDsp->iir_lpf_state));
-        memset(_gyrDsp->fir_state_hpf, 0, sizeof(_gyrDsp->fir_state_hpf));
-        memset(_gyrDsp->fir_state_lpf, 0, sizeof(_gyrDsp->fir_state_lpf));
     }
 }
 
@@ -593,13 +570,6 @@ void CL_T2_DspEngine::processGyro(const float* p_inX, const float* p_inY, const 
         }
         if (v_dsp.iir_lpf.en) {
             dsps_biquad_f32_aes3(v_out[i], v_out[i], p_len, _gyrDsp->iir_lpf_coeffs, _gyrDsp->iir_lpf_state[i]);
-        }
-
-        if (v_dsp.hpf.en) {
-            safe_dsps_fir_f32(&_gyrDsp->fir_inst_hpf[i], v_out[i], v_out[i], p_len);
-        }
-        if (v_dsp.lpf.en) {
-            safe_dsps_fir_f32(&_gyrDsp->fir_inst_lpf[i], v_out[i], v_out[i], p_len);
         }
 
         if (v_dsp.rem_dc) {

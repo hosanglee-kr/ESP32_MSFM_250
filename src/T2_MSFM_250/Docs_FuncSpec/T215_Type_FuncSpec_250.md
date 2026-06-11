@@ -25,6 +25,8 @@
 *   **`EM_TriggerSource_t`**: 결함 판정 및 기록을 시작하도록 한 트리거의 근원입니다.
     *   `NONE`, `HW_WAKE` (BMI270 모션 감지), `SW_RMS` (특징 RMS 임계치 초과), `SW_BAND` (특정 대역 에너지 초과), `MANUAL` (사용자 강제 명령)
 *   **`EM_WiFiMode_t`**: `STA_ONLY`, `AP_ONLY`, `AP_STA`, `AUTO_FALLBACK` (AP 연결 실패 시 자동 백업 복구)
+*   **`EM_AsyncSessionCmd_t`**: 비동기 스토리지 파일 쓰기 제어 이벤트 종류.
+    *   `OPEN_AUTO`, `OPEN_MANUAL`, `OPEN_CALIB_MAN`, `CLOSE_NORMAL`, `CLOSE_MANUAL`, `CLOSE_CALIB_DONE`
 
 ---
 
@@ -63,6 +65,8 @@
 웹소켓 및 이진 파일의 직렬화 연산을 고속 처리하기 위한 바이너리 팩킹 구조체들입니다.
 
 *   **`ST_WsHeader_t`**: 웹소켓 전송 패킷 헤더 (8 Bytes).
+*   **`ST_TriggerReason_t`**: 트리거 원인을 상세히 담고 있는 MLOps 관제 전용 메타데이터 구조체.
+*   **`ST_FileHeader_t`**: 스토리지 바이너리 파일 저장 시, 이벤트 시점을 지목하는 T0 마커 타임스탬프(`trigger_t0`) 및 트리거 사유(`reason`)를 저장하는 헤더 구조체.
 *   **`ST_PktTelemetry_t` (텔레메트리 패킷 - 320 Bytes)**:
     *   헤더, 시스템 상태, 트리거 원인, 타임스탬프, 온도 정보 등 메타데이터와 **가장 연산이 빈번한 4대 평탄화 지표**가 최후미 16바이트 정렬을 준수하여 배치되어 있습니다.
     *   배치: `accel_band_energy[16]` (64B) -> `gyro_rms_energy[2]` + `_pad_gyro` (16B) -> `audio_timbre_bands[32]` (128B) -> `audio_mfcc[13]` + `_pad_end` (64B)

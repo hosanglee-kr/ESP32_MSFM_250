@@ -190,5 +190,10 @@ public:
 
     // 수동 복구 및 파이프라인 가드 연쇄 해제 오케스트레이션
     void processManualReset();
+
+    // [신규] OTA 처리 및 복구 루틴, 고속 바이너리 텔레메트리 브로드캐스트
+    void prepareForOta();
+    void resumeFromOtaFailure();
+    void broadcastTelemetryPayload(const T2_Type::ST_FeatureSlot_Vib_t& p_vib, const T2_Type::ST_FeatureSlot_Aud_t& p_aud);
 };
 

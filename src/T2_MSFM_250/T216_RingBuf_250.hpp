@@ -22,19 +22,20 @@ public:
 
         size_t next_head = (head + 1) % MaxSize;
         if (next_head == tail) {
-            // 버퍼가 가득 차면 락 프리 조건 상 tail을 강제로 1 전진시켜 데이터 덮어쓰기 허용
-            _tail.store((tail + 1) % MaxSize, std::memory_order_release);
+            // [중요] tail 전진 전 메모리 배리어를 쳐 데이터 복사 완료 보장
+            _buffer[head] = item;
+            std::atomic_thread_fence(std::memory_order_release);
+            _tail.store((tail + 1) % MaxSize, std::memory_order_relaxed);
+        } else {
+            _buffer[head] = item;
+            std::atomic_thread_fence(std::memory_order_release);
         }
 
-        _buffer[head] = item;
-
-        // 메모리 쓰기 순서가 섞이지 않도록 하드웨어 배리어 강제 (데이터 복사 완료 보장)
-        std::atomic_thread_fence(std::memory_order_release);
         asm volatile("memw");
-
         _head.store(next_head, std::memory_order_release);
         return true;
     }
+
 
     // 단일 소비자(Consumer: 처리 태스크) 호출용 (락 프리)
     bool dequeue(T& outItem) {

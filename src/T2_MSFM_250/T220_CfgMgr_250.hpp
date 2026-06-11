@@ -30,10 +30,11 @@ private:
     uint32_t               _totalSlots;     // 파티션 내 전체 슬롯 수
     uint32_t               _nextSlotIdx;    // 다음에 쓸 슬롯 인덱스
     uint32_t               _latestSeqId;    // 최신 시퀀스 ID
+    SemaphoreHandle_t      _walLock;        // [신규] 파티션 락 추가
 
 public:
     CL_T2_WalDriver();
-    ~CL_T2_WalDriver() = default;
+    ~CL_T2_WalDriver();
 
     bool init();
     bool loadLatestConfig(T2_Type::ST_DynamicConfig_t& p_cfg);

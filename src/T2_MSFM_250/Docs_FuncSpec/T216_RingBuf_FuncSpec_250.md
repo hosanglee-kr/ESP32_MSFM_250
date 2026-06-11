@@ -36,7 +36,7 @@ private:
     2.  `(head + 1) % MaxSize` 가 `tail`과 같은 경우(버퍼 가득 참)를 감지합니다.
     3.  포화 상태일 때 `_tail`을 원자적으로 1 전진시켜 가장 오래된 데이터를 덮어쓸 수 있는 안전 공간을 확보합니다.
     4.  버퍼 배열에 데이터를 캐싱 및 쓰기를 완료합니다.
-    5.  메모리 펜스(`std::atomic_thread_fence`) 및 어셈블리 메모리 배리어(`asm volatile("memw")`)를 강제하여 컴파일러 및 CPU 파이프라인에서 실제 배열 쓰기가 완료되기 전 `_head`가 전진하는 현상을 방지합니다.
+    5.  메모리 펜스(`std::atomic_thread_fence(std::memory_order_release)`) 및 어셈블리 메모리 배리어(`asm volatile("memw")`)를 강제하여 컴파일러 및 CPU 파이프라인에서 실제 배열 쓰기가 완료되기 전 `_head`가 전진하는 현상을 방지합니다.
     6.  `_head` 인덱스를 release 메모리 순서로 업데이트합니다.
 
 #### 2. `bool dequeue(T& outItem)`
