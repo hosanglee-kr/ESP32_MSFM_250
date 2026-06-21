@@ -6,7 +6,7 @@
 
 ## 1. 모듈 개요
 
-`T200_Main` 모듈은 Arduino 프레임워크의 `main.cpp` (`setup()`, `loop()`)와 본 4-Tier 시스템 프레임워크를 연동하는 브리지 역할을 합니다. 또한 물리 제어 신호(인터럽트 버튼)를 감지하여 시스템 상태를 천이시키는 디스크리트 인터럽트 핸들러를 보유하고 있습니다.
+`T200_Main` 모듈은 Arduino 프레임워크의 `main.cpp` (`setup()`, `loop()`)와 본 4-Tier 시스템 프레임워크를 연동하는 브리지 역할을 합니다. 또한 물리 제어 신호(인터럽트 버튼)를 감지하여 시스템 상태를 천이시키는 디스크리트 인터럽트 핸들러를 보유하고 있으며, 부팅 단계에서 NVS 파티션 검증, RTC 메모리 정합성 확인, 시스템 파일 잠금 뮤텍스 초기화 등을 전담합니다.
 
 ---
 
@@ -19,7 +19,7 @@
 *   **동작규격**:
     1.  `esp_timer_get_time()` API를 사용하여 마이크로초(us) 단위의 부팅 이후 타임스탬프를 획득합니다.
     2.  `200ms` (200,000us) 디바운싱 윈도우를 적용하여 지터(Jitter)에 의한 중복 호출을 배제합니다.
-    3.  디바운싱이 유효하게 통과되면 `digitalRead()` 등의 호출 없이 즉시 FSM 매니저에 `T2_Type::EM_SystemCommand_t::CMD_START` 커맨드를 직접 전송(`dispatchCommand`)합니다.
+    3.  디바운싱이 유효하게 통과되면 즉시 FSM 매니저에 `T2_Type::EM_SystemCommand_t::CMD_START` 커맨드를 직접 전송(`dispatchCommand`)합니다.
 *   **속성**: ISR 컨텍스트 실행 보장을 위해 `IRAM_ATTR` 지시어가 적용되어 있습니다.
 
 ### `void T2_init(void)`
@@ -27,17 +27,19 @@
 *   **동작순서**:
     1.  디버그 모니터용 직렬 통신 포트(`Serial`)를 [T210_Def](../T210_Def_250.hpp)의 `SERIAL_BAUD_CONST` (115200) 속도로 초기화합니다.
     2.  디버그 터미널 구동 안전 대기(`vTaskDelay(100ms)`)를 수행합니다.
-    3.  [T200_Main_250.h](../T200_Main_250.h) 내부에서 `esp_reset_reason()`을 체크하여 `ESP_RST_POWERON`, `ESP_RST_EXT`, `ESP_RST_BROWNOUT`과 같은 콜드 스타트 부팅 판정 시 RTC 백업 메모리 영역인 `g_CrashDiag`을 전부 `0`으로 강제 초기화하여 쓰레기값에 의한 오작동을 차단합니다.
-    4.  `ESP_RST_PANIC`, `ESP_RST_WDT` 등 소프트웨어 예외 발생으로 인한 웜 리부팅 시에는 `g_CrashDiag` 진단 정보 스냅샷 데이터를 보존하여 재기동 후 MQTT 연결 시점에 긴급 송출합니다.
-    5.  물리 제어 입력 핀([T210_Def](../T210_Def_250.hpp)의 `PIN_BTN_CONTROL_CONST` = 0번 GPIO)의 모드를 `INPUT_PULLDOWN`으로 설정합니다.
-    6.  물리 입력 단자에 Falling Edge 단방향 트리거 인터럽트를 등록하고 `T200_handleTriggerISR` 핸들러 루틴을 바인딩합니다.
-    7.  `CL_T2_FsmManager` 싱글톤 인스턴스의 `init()` 메서드를 호출하여 설정 로드, 센서 기동, 멀티코어 태스크 생성을 연쇄 처리합니다.
+    3.  **컴파일 타임 파티션 검증**: 파티션 테이블에 WAL(Write-Ahead Logging) 파티션이 존재하는지 검증하고, 잔재 검출 시 빌드를 차단하여 NVS 전면 대체 무결성을 보장합니다. (`#ifdef CONFIG_PARTITION_TABLE_HAS_WAL` 에러 처리)
+    4.  **RTC 크래시 진단 데이터 검증**: `g_CrashDiag` 구조체의 `magic` 필드가 `0x43524153`('CRAS')이고 `esp_reset_reason()`이 소프트웨어 예외 및 워치독 리셋(WDT)인 경우 데이터를 보존하고, 그렇지 않은 경우 콜드 스타트 부팅으로 판단하여 `0`으로 초기화 및 매직 넘버를 신규 입력합니다.
+    5.  **LittleFS 뮤텍스 초기화**: 다중 코어 접근 방지를 위한 `_fsLock` 뮤텍스 세마포어를 생성하고 초기화합니다.
+    6.  **I2S DMA 디스크립터 계산**: I2S 초기화 단계에서 버퍼 오버플로우와 찢어짐을 예방하기 위해 단일 디스크립터 크기(4092B)를 초과하는 오디오 Hop Size에 맞추어 `dma_desc_count` 및 `dma_desc_size`를 자동으로 분할하여 결합합니다.
+    7.  물리 제어 입력 핀([T210_Def](../T210_Def_250.hpp)의 `PIN_BTN_CONTROL_CONST` = 0번 GPIO)의 모드를 `INPUT_PULLDOWN`으로 설정합니다.
+    8.  물리 입력 단자에 Falling Edge 단방향 트리거 인터럽트를 등록하고 `T200_handleTriggerISR` 핸들러 루틴을 바인딩합니다.
+    9.  `CL_T2_FsmManager` 싱글톤 인스턴스의 `init()` 메서드를 호출하여 설정 로드, 센서 기동, 멀티코어 태스크 생성을 연쇄 처리합니다.
 *   **속성**: 빠른 실행과 호출 오버헤드를 막기 위해 `inline` 선언되어 있습니다.
 
 ### `void T2_run(void)`
 *   **기능설명**: 시스템 실행 중 백그라운드 관리 업무 및 워치독 방어를 주기적으로 수행합니다. (`main.cpp`의 `loop()`에서 무한 호출)
 *   **동작순서**:
-    1.  `CL_T2_FsmManager` 인스턴스의 `runMaintenance()` 함수를 호출하여 네트워크 서비스 재접속 점검, 플래시 지연 쓰기(Lazy Write) 완료 처리 등을 주기적으로 관리합니다.
+    1.  `CL_T2_FsmManager` 인스턴스의 `runMaintenance()` 함수를 호출하여 1초 주기 백그라운드 NVS Lazy Write 틱 공급 및 스토리지 I/O 에러 감시를 처리합니다.
     2.  CPU 점유율 과다로 인한 워치독 리셋(WDT)을 미연에 방지하기 위해 [T210_Def](../T210_Def_250.hpp)의 `MAIN_LOOP_DELAY_MS_DEF` (10ms) 주기를 활용해 `vTaskDelay(pdMS_TO_TICKS(10))`을 호출하여 태스크 제어권을 커널에 이양합니다.
 *   **속성**: `inline` 선언되어 있습니다.
 
@@ -50,4 +52,15 @@
 2.  **디바운싱(Debounce) 안전 장치**:
     *   하드웨어 채터링 방지 회로 없이도 안정적인 모니터링 시작/정지를 유발하기 위해 정밀 소프트웨어 타이머를 이용하여 시간 기반 디바운싱을 강제합니다.
 3.  **크래시 진단 복구 정책 (`ST_CrashDiagnostics_t`)**:
-    *   `RTC_DATA_ATTR` 데코레이션이 달린 `g_CrashDiag` 구조체를 통해 크래시 발생 직전의 분석 결과와 RMS 지표, WDT 재도착 횟수를 영속 보존하여 부팅 즉시 MQTT 긴급 알람 브릿지로 전달합니다.
+    *   `RTC_DATA_ATTR` 데코레이션이 달린 `g_CrashDiag` 구조체를 통해 크래시 발생 직전의 분석 결과와 RMS 지표, WDT 재도착 횟수를 영속 보존하여 부팅 즉시 MQTT 긴급 알람 브릿지로 전달합니다. Magic Number 기법을 통한 Cold Boot 쓰레기 데이터 유입을 완벽 격리합니다.
+4.  **I2S DMA 청크 자동 분할**:
+    *   WiFi 버스트 트래픽과 공존할 때 대기 시간 동안 데이터가 유실되지 않도록 디스크립터 개수를 자동 분할 결정함으로써 오디오 파이프라인의 실시간 안정성을 극대화합니다.
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   NVS 마모 예방 및 WAL 파티션 미존재 컴파일 타임 검증 추가.
+    *   `g_CrashDiag` 매직 넘버(0x43524153) 검증 논리 반영.
+    *   LittleFS multi-core `_fsLock` 초기화 및 I2S DMA 디스크립터 자동 계산/분할 적용.

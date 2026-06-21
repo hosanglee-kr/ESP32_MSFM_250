@@ -49,9 +49,9 @@ private:
     uint64_t _max_allowed_skew_us;
 
 public:
-    MultiRateTimeAligner(uint64_t max_skew_us);
-    void injectNewVibSample(const float* raw_feats, uint64_t ts);
-    bool getAlignedVibration(uint64_t audio_ts, float* out_feats);
+    MultiRateTimeAligner(uint64_t p_maxSkewUs);
+    void injectNewVibSample(const float* p_rawFeats, uint64_t p_ts);
+    bool getAlignedVibration(uint64_t p_audioTs, float* p_outFeats);
 };
 
 class DynamicTensorBinder {
@@ -63,8 +63,8 @@ private:
     size_t _nn_input_boundary;
 
 public:
-    DynamicTensorBinder(size_t nn_input_size);
-    void updateTensorOffsets(uint16_t active_mask_flags, size_t audio_feat_cnt, size_t vib_feat_cnt);
-    bool buildFlattenTensor(float* p_target_tensor, const float* audio_src, const float* vib_src, uint16_t mask);
+    DynamicTensorBinder(size_t p_nnInputSize);
+    void updateTensorOffsets(uint16_t p_activeMaskFlags, size_t p_audioFeatCnt, size_t p_vibFeatCnt);
+    bool buildFlattenTensor(float* p_targetTensor, const float* p_audioSrc, const float* p_vibSrc, uint16_t p_mask);
 };
 

@@ -1,6 +1,6 @@
 # [MSFM_T2_250] T270_Commu 기능 규격서
 
-본 문서는 **MSFM_T2_250** 임베디드 펌웨어의 멀티플렉싱 유무선 통신 제어엔진인 `T270_Commu` (Communicator) 모듈에 대한 기능 규격서입니다.
+본 문서는 **MSFM_T2_250** 임베디드 펌웨어의 멀티플렉싱 유무선 통신 제어엔진인 `T270_Commu` (Commu Manager) 모듈에 대한 기능 규격서입니다.
 
 ---
 
@@ -14,7 +14,7 @@
 
 [T270_Commu_250.hpp](../T270_Commu_250.hpp) 클래스의 주요 공개 API 및 콜백 규격은 다음과 같습니다.
 
-### `CL_T2_Communicator(void)`
+### `CL_T2_CommuManager(void)`
 *   **기능설명**: 생성자로, 웹서버 포트(기본 80포트) 및 웹소켓 진입 엔드포인트 `/ws`를 할당 매핑하고 내부 상태 플래그를 미실행 상태로 둡니다.
 
 ### `bool init(void)`
@@ -30,17 +30,23 @@
 *   **기능설명**: 메인 루틴의 백그라운드 관리 스레드에서 주기적으로 호출됩니다. 와이파이 물리 연결 유실 시 자동 재결합(Reconnection) 스캔 시도를 유발하며, MQTT 브로커와의 커넥션 실패 시 `_lastMqttRetryMs` 시간을 추적하여 `10초` 주기로 백그라운드 재접속을 오케스트레이션합니다.
 *   **TLS 데드락 예방 가드**: WiFi 연결 직후 잘못된 시스템 연도(1970년) 상태에서 MQTT TLS 인증 실패 및 핸드셰이크 차단(데드락)을 방지하기 위해, NTP 동기 획득 완료(`timeinfo.tm_year > 120`) 시점까지 MQTT 보안 TLS 핸드셰이크 클라이언트 시작(`esp_mqtt_client_start`)을 보류합니다.
 
+### `void processNetworkRestart(void)`
+*   **기능설명**: 설정 변경 및 네트워크 재연결 핫스왑 명령(`CMD_RESTART_NETWORK`) 수신 시 리부팅 없이 통신 데몬만 안전하게 재연결을 시도합니다. MQTT 클라이언트를 중지시키고, WiFi 연결을 해제한 후 100ms 대기 후 변경된 설정을 독출하여 재기동 루틴을 수행합니다.
+
 ### `void recreateMqttClient(const esp_mqtt_client_config_t& new_cfg)`
-*   **기능설명**: 네트워크 및 MQTT 설정 변경 시 핫 리부팅 없이 통신 데몬만 안전하게 재연결을 시도하도록, 기존 MQTT 클라이언트 리소스를 안전히 해제 및 소멸(`esp_mqtt_client_destroy`)한 후 신규 설정 기반 인스턴스로 재할당합니다.
+*   **기능설명**: 기존 MQTT 클라이언트 리소스를 안전하게 소멸(`esp_mqtt_client_destroy`)한 후 신규 설정 기반 인스턴스로 재생성하여 커넥션 핸들 누수 및 충돌을 차단합니다. 생성 후 `_mqttConnected = false` 플래그를 리셋하여 재연결 루프가 구동되도록 유도합니다.
 
 ### `void broadcastBinary(const void* p_buffer, size_t p_bytes)`
 *   **기능설명**: WebSocket 클라이언트들에게 고속 바이너리 메트릭 패킷(파형, 텔레메트리 등)을 일제 브로드캐스팅 전송합니다.
-*   **성능가드**: 수신 측 브라우저의 전송 지연이나 느린 패킷 처리로 인해 ESP32 내부에 소켓 버퍼 백로그(Backlog)가 대량 누적되어 OOM(Out Of Memory) 크래시를 유발하는 현상을 방지하기 위해, 웹소켓 큐 프레임 제한 및 전송 에러 시 자동 연결 끊기 가드를 동시 수행합니다.
+*   **SD I/O 에러 시 Mute 정책**: 시스템 장애로 FSM이 `ERROR` 상태로 전이된 시점에는 실시간 특징량 이송을 안전하게 차단(Mute)하여 소켓 버퍼 폭주 및 OOM을 예방합니다.
+*   **성능가드**: 수신 측 브라우저의 전송 지연이나 느린 패킷 처리로 인해 ESP32 내부에 소켓 버퍼 백로그(Backlog)가 대량 누적되는 것을 방지하기 위해, 웹소켓 큐 프레임 제한 및 전송 에러 시 자동 연결 끊기 가드를 동시 수행합니다.
 
-### `bool publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, T2_Type::EM_DetectionResult_t p_result)`
-*   **기능설명**: 룰 엔진 판정 결과 및 오디오/진동 핵심 통계 지표 슬롯을 JSON 메시지로 경량 직렬화 가공하여 MQTT 지정 토픽으로 발행(Publish)합니다. 
-*   **메모리 최적화**: 힙 단편화 방지를 위해 통신용 독자 풀인 `StaticJsonDocument` 풀 `_commuDocPool`을 멤버 변수로 선언해 사용 후 `shrinkToFit()`으로 메모리를 평탄화하며, 웹소켓/웹서버 병렬 처리 시 레이스 컨디션을 방지하기 위해 `_commuLock` 뮤텍스로 보호합니다.
-*   **반환값**: MQTT 커넥션이 양호하여 정상 송출 완료되었는지 여부.
+### `void publishResultMqtt(const char* p_topic, const T2_Type::ST_FeatureSlot_Vib_t& p_data)`
+*   **기능설명**: 특징량 및 판정 결과를 JSON으로 패킹하여 MQTT 지정 토픽으로 발행(Publish)합니다.
+*   **SD I/O 에러 긴급 패킷**: SD 카드 물리 쓰기 에러(`hasIoError`) 감지 시, 일반 바이너리 스트리밍 발행을 즉시 차단(Mute)하고 스토리지 에러 긴급 패킷(Severity: CRITICAL)을 최상위 토픽에 1회 단독 발행하여 가시성을 보장합니다.
+*   **메모리 최적화 (ArduinoJson V7)**:
+    *   공용 `JsonDocument`인 `_commuDocPool`을 웹소켓/웹서버 병렬 보호를 위해 `_commuLock` 뮤텍스로 잠근 상태에서 팩킹에 활용합니다.
+    *   사용 직후 `_commuDocPool.shrinkToFit()`을 호출하여 메모리를 획득 평탄화합니다.
 
 ---
 
@@ -57,3 +63,13 @@
     *   `TCP_KEEPIDLE` = 60초 (유휴 대기 시 첫 프로브 발생)
     *   `TCP_KEEPINTVL` = 10초 (프로브 간격)
     *   `TCP_KEEPCNT` = 3회 (3회 미응답 시 즉시 소켓 파괴)
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   클래스명을 `CL_T2_CommuManager`로 현행화.
+    *   ArduinoJson V7 표준 규격 `JsonDocument` 및 `_commuLock` 뮤텍스 적용 텔레메트리 팩킹 반영.
+    *   `CMD_RESTART_NETWORK` 네트워크 재설정 핫스왑 재연결 및 `recreateMqttClient` 인스턴스 재생성 설계 반영.
+    *   SD 카드 물리 에러 발생 시 스트림 Mute 및 Alarm CRITICAL 패킷 최우선 단독 송출 정책 추가.

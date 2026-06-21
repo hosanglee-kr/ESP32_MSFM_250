@@ -13,11 +13,14 @@ ESP32-S3 Dual-Core MCU 제약을 극복하고, 고주파수 오디오 수집(42k
 | **`ImuAcqTask`**  | `_imuAcqTask`       | **Core 0** | 12 (최상위) | BMI270 FIFO Watermark ISR (약 25ms) | SPI 버스 점유, FIFO 원시 데이터 고속 인출 및 링버퍼 적재                     |
 | **`AudProcTask`** | `_audioProcessTask` | **Core 1** |    6     |     I2S DMA 수신 이벤트 (약 12.2ms)      | 오디오 핑퐁 버퍼 수신 시 기동하여 DSP 필터링, 특징 추출, 켑스트럼 분석 및 융합 판정/저장 지시 |
 | **`VibProcTask`** | `_vibProcessTask`   | **Core 1** |    5     |     1024 샘플 수집 완료 시 (약 640ms)      | 가속도/자이로 축별 누적 링버퍼 데이터를 가져와 FIR/IIR 처리, 특징 연산 및 비동기 저장 지시  |
-| **`StorageTask`**  | `_storageTaskProc`  | **Core 0** |  2 (하위)  |        비동기 스토리지 큐 메시지 수신 시         | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리                    |
+| **`StorageTask`**  | `_storageTaskProc`  | **Core 0** |  2 (하위)  |        비동기 스토리지 큐 메시지 수신 시         | SD 카드 파일 쓰기 및 용량/시간 한계 도달 시 파일 로테이션 관리 (락 디커플링 적용)                    |
 
 > [!IMPORTANT]
-> **SPI Lock (뮤텍스) 제어 원칙**:
-> `ImuAcqTask` 태스크와 메인 루프/기타 태스크(`T220_CfgMgr`, `T280_Calibrator` 등)가 SPI 버스에서 경합하지 않도록 `CL_T2_SensorEngine` 내부에 배치된 `_spiLock` Mutex Semaphore를 반드시 통과해야 합니다.
+> **SPI 트랜잭션 스케줄러 기반 상호 배제**:
+> 수집 태스크와 설정/교정 태스크가 동시에 SPI 버스에 접근하지 않도록 모든 SPI 제어는 `ST_SpiTransaction_t` 스케줄러 큐를 경유해야 합니다.
+>
+> **VFS 파일시스템 보호를 위한 fsLock**:
+> Lazy Write 데몬, 노이즈 프로필 파일 쓰기 등이 다중 코어에서 LittleFS 파일 시스템에 동시에 진입하여 발생하는 붕괴를 방지하기 위해 `_fsLock` 세마포어로 상호 배제를 적용합니다.
 
 ---
 
@@ -40,13 +43,13 @@ sequenceDiagram
 
     Main->>T200: T2_init() 호출
     activate T200
-    Note over T200: 1. Serial (115200) 설정 <br/>2. 버튼핀(GPIO 0) 설정 및 T200_handleTriggerISR 인터럽트 바인딩
+    Note over T200: 1. Serial (115200) 설정 <br/>2. RTC 메모리 g_CrashDiag 검증 (magic=0x43524153 및 reset_reason 확인)<br/>3. NVS 미존재 컴파일 타임 검증 가드 체크
     T200->>FsmMgr: init() 호출
     activate FsmMgr
     
-    FsmMgr->>CfgMgr: init() (JSON 및 WAL 설정 로드)
-    FsmMgr->>Sensor: init() (SPI-BMI270, I2S-ICS43434 핀 & 클럭 맵핑)
-    FsmMgr->>DspEng: init() (DC 컷, notch, IIR/FIR 필터 계수 설정)
+    FsmMgr->>CfgMgr: init() (JSON 및 NVS 설정 로드, _fsLock 초기화)
+    FsmMgr->>Sensor: init() (SPI-BMI270, I2S-ICS43434 핀, 클럭 맵핑, DMA 디스크립터 계산)
+    FsmMgr->>DspEng: init() (DC 컷, notch, IIR/FIR 필터 계수 설정, SMEA_FLASH_RODATA 속성 지정)
     FsmMgr->>FeatExt: init() (FFT 버퍼 및 Mel-Filterbank 초기화)
     
     FsmMgr->>Storage: init() 호출
@@ -75,43 +78,34 @@ sequenceDiagram
 
 ## 3. FSM 상태 전이 흐름 (System FSM State Transitions)
 
-`CL_T2_FsmManager`가 주도하는 시스템의 8가지 상태와 상태별 전환 트리거 및 LED 인디케이터 맵핑입니다.
+`CL_T2_FsmManager`가 주도하는 시스템의 상태와 상태별 전환 트리거 및 LED 인디케이터 맵핑입니다.
 
 ```mermaid
 stateDiagram-v2
     [*] --> INIT : Power On / Reset
     INIT --> READY : init() 성공 및 초기화 완료
     
-    READY --> MONITORING : CMD_START 디스패치 (물리 버튼 / 웹 CLI / MQTT)
+    READY --> WARM_UP : CMD_START 디스패치 (물리 버튼 / 웹 CLI / MQTT)
+    WARM_UP --> MONITORING : 30초 경과 시 (is_warmup_completed) 자동 전이
+    
     MONITORING --> READY : CMD_STOP 디스패치
+    WARM_UP --> READY : CMD_STOP 디스패치
     
     MONITORING --> RECORDING : 결함 감지 (Diagnostic Result != PASS) / CMD_MANUAL_REC_START
-    RECORDING --> READY : CMD_STOP / CMD_MANUAL_REC_STOP / 저장 기간 완료 후 자동 복귀
+    RECORDING --> READY : CMD_STOP / CMD_MANUAL_REC_STOP / 저장 기간 완료 후 자동 복귀 (Graceful Shutdown)
     
-    READY --> CALIBRATING : CMD_CALIBRATE / Auto-Idle 시간 초과 (배경 소음 차단 보정)
+    READY --> CALIBRATING : CMD_CALIBRATE / Auto-Idle 시간 초과 (배경 소음 차단 보정, State Lock 활성화)
     CALIBRATING --> READY : 캘리브레이션 연산 완료 후 자동 복귀 / CMD_STOP
     
     READY --> NOISE_LEARNING : CMD_LEARN_NOISE 디스패치
     NOISE_LEARNING --> READY : 노이즈 평균 스펙트럼 밀도 학습 완료 후 자동 복귀
     
-    READY --> MAINTENANCE : CMD_OTA_START 디스패치 (태스크 일시 중단, 버스 격리)
-    MAINTENANCE --> READY : CMD_OTA_END 디스패치 (태스크 재개)
+    MONITORING --> MAINTENANCE : SYS_STATE_OTA 전이 (prepareForOta 실행)
+    MAINTENANCE --> MONITORING : OTA 완료 또는 OTA 실패 복구 (resumeFromOtaFailure 실행)
     
-    ANY_STATE --> ERROR : LittleFS/SD카드 쓰기 장애, WDT 임계 초과 등 시스템 폴트
+    ANY_STATE --> ERROR : LittleFS/SD카드 물리 I/O 쓰기 장애 발생 시 전이
     ERROR --> READY : processManualReset() (사용자 버튼 / 긴급 복구 명령)
 ```
-
-### 상태별 LED 색상 표
-| 시스템 상태 (State) | LED 색상 (RGB) | 설명 |
-| :--- | :---: | :--- |
-| **`INIT`** | 노란색 (Yellow) | 부팅 및 하드웨어 준비 중 |
-| **`READY`** | 초록색 (Green) | 구동 준비 완료, 명령 대기 상태 |
-| **`MONITORING`** | 하늘색 (Cyan) | 실시간 센서 가공 및 진단 수행 중 |
-| **`RECORDING`** | 빨간색 (Red) | 결함 트리거 발생에 따른 SD 카드 원시 파형 저장 중 |
-| **`NOISE_LEARNING`** | 보라색 (Purple) | 배경 노이즈 스펙트럼 수집 및 학습 중 |
-| **`CALIBRATING`** | 주황색 (Orange) | 마이크 EQ 보정 곡선 추출 실행 중 |
-| **`MAINTENANCE`** | 흰색 (White) | OTA 펌웨어 업데이트 중 (파이프라인 일시중단) |
-| **`ERROR`** | 빨간색 (Red-High) | 물리적 디바이스 / IO 장애 상태 |
 
 ---
 
@@ -125,7 +119,7 @@ graph TD
     subgraph Core0 [Core 0 : 수집 및 물리 디스크 I/O]
         style Core0 fill:#f0f4f8,stroke:#3b5998,stroke-width:2px
         ISR_Vib[BMI270 Watermark ISR] -->|vTaskNotifyGive| Task_Acq[ImuAcqTask 태스크]
-        Task_Acq -->|SPI DMA / Read| Sensor_Vib[BMI270 Sensor]
+        Task_Acq -->|SPI 스케줄러 큐 경유| Sensor_Vib[BMI270 Sensor]
         Sensor_Vib -->|LSB to G/Dps 변환 및 캘리브레이션| Ring_Sensor[Sensor Circular Buffers]
         
         Task_Storage[StorageTask 태스크] -->|SD MMC Write| SD_Card[(SD Card)]
@@ -168,23 +162,6 @@ graph TD
     end
 ```
 
-### 상세 동작 시퀀스
-
-### A. 진동(IMU) 수집 및 가공 흐름 (Core 0 ➔ Core 1)
-1. **ISR 트리거**: BMI270 FIFO의 워터마크 비트가 설정되면 `PIN_INT1_WATERMARK_CONST` 핀이 RISING 엣지로 전환되어 `T245_bmi_watermark_isr` 인터럽트 루틴이 호출됩니다.
-2. **스로틀링 및 노티파이**: ISR은 최소 호출 주기(0.5ms)를 검증하고 `vTaskNotifyGiveFromISR`을 통해 Core 0의 `ImuAcqTask` 태스크를 즉시 기동합니다.
-3. **FIFO 수집**: `ImuAcqTask`는 SPI 버스를 획득하여 BMI270 FIFO 데이터를 긁어와 링버퍼에 적재합니다.
-4. **가공 및 특징 추출 (Core 1)**: `VibProcTask` 태스크가 약 640ms 주기(1024 샘플 완료 시점)로 링버퍼에서 데이터를 가져와 DC 제거, 노치 필터링, RMS 및 대역 특징량 연산을 수행합니다.
-5. **공유 메모리 배포**: 가공 완료된 진동 특징 슬롯(`ST_FeatureSlot_Vib_t`)은 `_sharedCtx->vib_slots` 더블 버퍼 중 쓰기 버퍼에 저장된 후, `vib_idx`가 원자적으로 스왑(`std::memory_order_release`)되어 오디오 태스크로 공유됩니다.
-
-### B. 오디오 수집, 가공 및 Late-Sync 센서 퓨전
-1. **오디오 수집**: I2S DMA 버퍼 수신이 감지되면 Core 1의 `AudProcTask` 태스크가 깨어나 `readAudioChunk`를 호출해 1024개의 32비트 오디오 샘플을 wait-free로 가져와 정규화합니다.
-2. **오디오 가공**: `processAudio` 및 `extractAudio`가 DC 제거, Notch, FFT 스펙트럼, Timbre 지표 및 MFCC 계수를 빠르게 연산합니다.
-3. **Late-Sync 정렬 및 융합**: 
-   - 오디오 태스크는 `_sharedCtx->vib_idx`를 원자적으로 획득(`std::memory_order_acquire`)하여 가장 최근에 연산된 진동 데이터 슬롯을 가져옵니다.
-   - `MultiRateTimeAligner`가 진동(1600Hz)과 오디오(42000Hz) 간 시간차(Skew)를 검증하여 동기화 및 ZOH 폴백 처리를 수행합니다.
-   - 융합 텐서 빌더(`DynamicTensorBinder`)는 오디오 MFCC와 진동 특징을 합쳐 312차원의 평탄화된 TinyML 추론 텐서를 최종 조립하고 `SequenceBuilder`에 밀어 넣습니다.
-
 ---
 
 ## 5. 트리거 및 실시간 안전 차단 인터록 흐름
@@ -202,7 +179,7 @@ sequenceDiagram
 
     AudProc->>TrigEng: runDiagnostic(audSlot, vibSlot)
     activate TrigEng
-    Note over TrigEng: RMS 레벨 및 임계 비율 검사
+    Note over TrigEng: RMS 레벨 및 임계 비율 검사 (WARM_UP 동안 판정 패스)
     TrigEng-->>AudProc: EM_DetectionResult_t 리턴 (예: RULE_AUDIO_NG)
     deactivate TrigEng
 
@@ -255,10 +232,11 @@ graph TD
     Push_Aud -->|세션 열림: RECORDING| Ring_Aud[PSRAM 비동기 오디오 링버퍼]
     Push_Vib -->|세션 열림: RECORDING| Ring_Vib[PSRAM 비동기 진동 링버퍼]
 
-    %% 프리트리거 플러시
-    Trig_Open[세션 오픈 트리거 발생] -->|_flushPreBufferToRing| Flush_Action[프리트리거 버퍼의 과거 데이터를 <br/> 비동기 링버퍼로 전부 밀어넣기]
-    Flush_Action --> Ring_Aud
-    Flush_Action --> Ring_Vib
+    %% 프리트리거 플러시 (스냅샷 바운스 버퍼 활용)
+    Trig_Open[세션 오픈 트리거 발생] -->|dumpPreTriggerToSession| SnapshotBuf[정적 할당된 PSRAM 스냅샷 버퍼 복사]
+    SnapshotBuf -->|락 즉시 해제| Disk_Write[락 외부에서 물리 f_write 실행]
+    Disk_Write --> Ring_Aud
+    Disk_Write --> Ring_Vib
 
     %% 큐 송출
     Ring_Aud -->|Write Index 푸시| Q_AudStorage[xQueue_qAudStorage]
@@ -279,8 +257,12 @@ graph TD
     end
 ```
 
-### 버스트 기입 제어 및 병목 차단 장치
-* **Internal SRAM 바운스 버퍼 (`_bounceAudFeat` 등)**: 
-  SD 카드 기입 속도를 높이고 DMA 버스트 시 캐시 미스 및 데이터 찢어짐(Data Tearing)을 차단하기 위해, 링버퍼 포인터를 직접 전달하지 않고 16바이트 정렬된 Internal SRAM의 단일 바운스 버퍼 공간으로 데이터를 복사한 후 저장소 파일 기입 라이터 함수를 호출합니다.
-* **오디오/진동 루프 비동기 저장 속도 밸런싱 (Burst Limit)**:
-  `_processRingIO()`의 1회 기동당 오디오 처리는 최대 **8개(burst limit = 8)**, 진동 처리는 최대 **2개(burst limit = 2)**로 제한하여 특정 모달리티의 쓰기 점유율 독점으로 인한 태스크 병목 및 큐 오버플로우를 미연에 차단합니다.
+---
+
+## 7. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   구현설계서 v2에 의거하여 부팅 시퀀스(NVS 검증, Crash Diag 검증, fsLock 추가) 현행화.
+    *   FSM 상태 전이에 `WARM_UP` 단계(30초) 및 SD I/O 에러 정책 추가.
+    *   OTA Graceful Pause/Resume 프로세스 시퀀스 추가.
+    *   프리트리거 덤프 시 스택 오버플로우 및 락 경합 방지를 위한 PSRAM 스냅샷 바운스 버퍼 플러시 흐름 반영.

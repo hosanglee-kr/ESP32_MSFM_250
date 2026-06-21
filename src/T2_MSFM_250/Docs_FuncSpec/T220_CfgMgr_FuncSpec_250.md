@@ -8,7 +8,9 @@
 
 `T220_CfgMgr`는 전역 시스템, 와이파이, MQTT, NTP, 저장공간 및 개별 센서(가속도, 자이로, 마이크)의 모든 설정 정보를 보유하는 **단일 진실 공급원 (SSOT, Single Source of Truth)** 역할을 수행합니다. 내부적으로 LittleFS 파일 시스템과 `ArduinoJson` 라이브러리를 이용하여 설정을 저장/로드하고, 플래시 메모리 수명을 보호하기 위한 지연 쓰기(Lazy Write)와 웹 기반 실시간 설정 변경을 위한 튜닝 프리뷰 기능을 제공합니다.
 
-또한 LittleFS 파일 시스템에 병렬 스레드가 접근하여 VFS 충돌이 일어나는 레이스 컨디션을 예방하기 위해, 모든 파일 입출력 API 진입로에 `_fsLock` 세마포어(Mutex)를 정의하여 상호 배제 동기화를 의무화하였습니다.
+기존의 복잡한 WAL(Write-Ahead Logging) 드라이버 설계를 전면 폐기하고 표준 NVS 및 캐시 구조로 변경하여 단순성 및 신뢰성을 확보하였습니다.
+
+또한 LittleFS 파일 시스템에 병렬 스레드가 접근하여 VFS 충돌이 일어나는 레이스 컨디션을 예방하기 위해, 모든 파일 입출력 API 진입로(환경 노이즈 프로필 파일 저장/로드인 `saveNoiseProfile`, `loadNoiseProfile` 포함)에 `_fsLock` 세마포어(Mutex)를 정의하여 상호 배제 동기화를 의무화하였습니다.
 
 ---
 
@@ -47,16 +49,24 @@
 *   **반환값**: 저장 결과.
 
 ### `bool updateConfigLazy(const T2_Type::ST_DynamicConfig_t& p_newConfig)`
-*   **기능설명**: 신규 설정 데이터를 메모리에 기록하되, 정규 LittleFS 플래시 저장을 뒤로 늦춥니다. 단, 전원 무손실 정합성 확보를 위해 **즉각적인 WAL 커밋(`_walDriver.commitConfigFast(_dynConfig)`)**을 수행하여 초동 전원 무결성을 확보하고, 더티 플래그(`_isDirty`)를 설정하여 백그라운드 태스크에서 플러시되도록 유도합니다.
+*   **기능설명**: 신규 설정 데이터를 메모리에 기록하되, 정규 LittleFS 플래시 저장을 뒤로 늦춥니다. 더티 플래그(`_isDirty`)를 설정하여 백그라운드 태스크에서 플러시되도록 유도합니다.
 *   **반환값**: `true` 고정.
 
 ### `bool updateFromJson(const char* p_jsonString)`
 *   **기능설명**: Web 브라우저나 MQTT 명령으로 전달받은 부분 JSON 텍스트를 분석하여 해당하는 메모리 영역만 갱신 적용하고 지연 쓰기(Lazy Write)를 자동 예약합니다.
 *   **반환값**: JSON 파싱 및 병합 성공 여부.
-*   **메모리 최적화**: 전역 `StaticJsonDocument` 멤버 풀인 `_docPool`을 사용하여 힙 단편화와 OOM 리스크를 소멸시킵니다. 사용 직후 `shrinkToFit()`을 호출하여 메모리를 평탄화합니다.
+*   **메모리 최적화 (ArduinoJson V7 적용)**:
+    *   ArduinoJson V7 표준에 의거하여 클래스 멤버 영역에 공용 `JsonDocument`인 `_docPool`을 사용하여 힙 단편화와 OOM 리스크를 소멸시킵니다.
+    *   파싱 완료 후 `_docPool.shrinkToFit()`을 호출하여 메모리를 최적화 평탄화합니다.
 
-### `void checkLazyWrite(void)`
-*   **기능설명**: 백그라운드 루틴(`T2_run` 또는 `runMaintenance`)에서 지속 호출되는 주기 함수입니다. 더티 상태이고 마지막 수정 시점으로부터 `3초` (`LAZY_WRITE_MS_DEF`)가 경과했을 때 실제 LittleFS 플래시 쓰기(`save()`)를 시작하여 파일 IO 쓰기 횟수를 최소화합니다.
+### `void checkLazyWrite(EM_SystemState_t currState)`
+*   **기능설명**: 백그라운드 루틴(`T2_run` 또는 `runMaintenance`)에서 1초 주기로 호출되는 관리 함수입니다.
+*   **동작 제약 (WAV 녹화 중 플래시 I/O 유예)**:
+    *   시스템 상태가 실시간 녹화 수집 모드(`SYS_STATE_WAV_RECORDING`) 시에는 물리 플래시 쓰기 작업을 유예하고 IDLE 상태로 전이되었을 때 플러시하도록 제어하여 실시간 스트림 수집 간섭을 배제합니다.
+    *   더티 상태이고 마지막 수정 시점으로부터 `10초` (`LAZY_WRITE_MS_DEF = 10000`)가 경과했을 때 LittleFS 플래시 쓰기(`save()`)를 기입하고 NVS 변경 내역을 반영합니다.
+
+### `void saveCriticalConfig(const ST_DynamicConfig_t& cfg)`
+*   **기능설명**: 사용자 캘리브레이션 락 설정, 크래시 진단 데이터 등 치명적 변경 정보를 지연 처리 없이 플래시 NVS 영역에 즉각 커밋(`nvs_commit`)하는 Immediate Commit API입니다.
 
 ### `bool updatePreview(const char* p_jsonString)`
 *   **기능설명**: 튜닝 프리뷰 모드를 개시합니다. 플래시에 파일로 백업하지 않고, 순수 메모리 영역(`_dynConfig`) 데이터만 파싱 적용하여 장비가 즉각 실시간 갱신된 필터 계수로 동작하도록 가이드합니다. 튜닝 모드 활성 플래그 `_isTuningActive`를 `true`로 세팅합니다.
@@ -70,51 +80,34 @@
 *   **기능설명**: 튜닝 적용 과정을 중간 취소합니다. 메모리 설정을 폐기하고 기존 플래시에 저장된 최종 설정 파일에서 복구 로드합니다.
 *   **반환값**: 복구 성공 여부.
 
----
-
-## 2.2 WAL (Write-Ahead Logging) 드라이버 명세
-
-`CL_T2_WalDriver` 클래스의 공개 API 규격은 다음과 같습니다.
-
-### `bool init()`
-*   **기능설명**: 지정된 파티션(`wal`) 정보를 가져와 초기화하고 쓰기 헤더 주소를 검증하며, 멀티코어 충돌 방지용 `_walLock` 뮤텍스를 생성합니다.
-*   **반환값**: 성공 여부.
-
-### `bool loadLatestConfig(T2_Type::ST_DynamicConfig_t& p_cfg)`
-*   **기능설명**: `wal` 파티션 내의 16개 섹터를 순회하여 가장 최신의 유효한 시퀀스 번호를 가진 설정 스냅샷(`ST_DynamicConfig_t`)을 역산 로드합니다.
-*   **반환값**: 최신 설정 로드 성공 여부.
-
-### `bool commitConfigFast(const T2_Type::ST_DynamicConfig_t& p_cfg)`
-*   **기능설명**: `_walLock`을 획득하여 동시 쓰기를 차단한 상태에서 섹터 소거 없이 즉시 새로운 페이지 공간에 바이트 단위로 순차 기록(Erase 없이 Append)하는 초고속 저장을 실행합니다. 수십 µs 이내에 완료됩니다.
-*   **반환값**: 커밋 성공 여부.
-
-### `bool prepareNextSlot(void)`
-*   **기능설명**: WAL 섹터 공간이 포화되어 다음 섹터로 전진해야 할 때, 백그라운드 태스크에 의해 미리 해당 공간을 `0xFF`로 선제 소거(Erase)하여 대기 시간을 예방합니다.
-
-### `bool clearAll(void)`
-*   **기능설명**: WAL 파티션의 모든 영역을 초기화(소거)합니다.
+### `bool saveNoiseProfile(const float* profile, size_t size)` / `bool loadNoiseProfile(float* profile, size_t size)`
+*   **기능설명**: 노이즈 제거용 배경 소음 프로필을 LittleFS 파일에 안전하게 쓰고 읽어옵니다. 다중 코어 접근 방지를 위해 내부적으로 `_fsLock`을 의무 획득 및 해제합니다.
 
 ---
 
 ## 3. 핵심 설계 데이터 및 시퀀스
 
 1.  **동적 설정 구조체 (`ST_DynamicConfig_t`)**:
-    *   [T215_Type_250.hpp](../T215_Type_250.hpp#L396-L413)에 기술된 마스터 설정형 구조체로서 `system`, `wifi`, `mqtt`, `ntp`, `storage`, `output`, `decision`, `accel`, `gyro`, `audio` 등의 컴포넌트 단위 내부 상세 구조체를 일괄 포함합니다.
-2.  **독립 Raw Flash WAL 파티션 (`wal`)**:
-    *   `partitions_16MB.csv` 에 선언된 사용자 정의 서브타입(`0x99`), 크기 `0x10000` (64KB, 16개 섹터)의 독립 영역.
-3.  **2-Phase Commit 지연 저장 메커니즘 (Lazy Write Sequence with WAL)**:
+    *   마스터 설정형 구조체로서 `system`, `wifi`, `mqtt`, `ntp`, `storage`, `accel`, `gyro`, `audio` 등의 컴포넌트 단위 내부 상세 구조체를 일괄 포함합니다.
+2.  **LittleFS 동시 접근 제어 (`_fsLock`)**:
+    *   두 코어에서 파일 시스템에 접근하여 오염이 유발되는 것을 방어하기 위해 모든 쓰기/지우기 루틴은 반드시 `_fsLock` 세마포어로 보호됩니다.
+3.  **WAV 녹화 시 Lazy Write 홀딩 시퀀스**:
     ```
-    웹/API 요청 -> updateFromJson() -> 메모리(RAM) 값 수정 -> _isDirty=true & _lastModifiedMs=현재시간
-                                                                 |
-                                              [1단계: 초고속 WAL 동기화 커밋]
-                                                                 |
-                                          _walDriver.commitConfigFast() 호출 (Erase 없이 Append, 수십 us)
-                                                                 |
-                                            [2단계: 백그라운드 LittleFS 지연 쓰기]
-                                                                 |
-                                       checkLazyWrite() 호출 -> 현재시간 - _lastModifiedMs > 3000ms?
-                                                                 |
-                                            예 -> save() 실행 (cfg_250.json/fsLock 획득 정규 플러시) 
-                                                 및 차기 WAL 영역 0xFF 선제 소거 (Erase 지연 격리)
-                                                 및 _isDirty=false
+    1초 주기 틱 수신 -> checkLazyWrite(currState) 호출
+                              |
+                     currState == SYS_STATE_WAV_RECORDING ?
+                              |
+                    [예] ----> 플래시 기입 유예 (즉시 리턴)
+                    [아니오] -> _isDirty && 10초 경과? -> save() 기입 및 NVS 커밋
     ```
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   WAL 드라이버 구조체 및 파티션 명세 완전 삭제 및 NVS 표준 대체.
+    *   ArduinoJson V7 규격 `JsonDocument` 적용 및 `shrinkToFit()` 평탄화 메모리 최적화 반영.
+    *   `checkLazyWrite`에서 실시간 녹화(`SYS_STATE_WAV_RECORDING`) 시 저장 지연 가드 및 10초 주기 병합 적용.
+    *   NVS 즉시 영속화를 위한 `saveCriticalConfig` Immediate Commit API 추가.
+    *   배경 소음 프로필 입출력(`saveNoiseProfile`, `loadNoiseProfile`) 시 LittleFS `_fsLock` Mutex 적용 설계 보완.

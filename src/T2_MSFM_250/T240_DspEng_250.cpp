@@ -67,60 +67,87 @@ CL_T2_DspEngine::CL_T2_DspEngine() {
     _accHilbertEnvZ = nullptr;
 }
 
-// 함수설명: DSP 엔진 소멸자이며, 동적으로 할당된 멀티모달 DSP 런타임 메모리 영역을 해제합니다.
+// DSP 엔진 소멸자이며, 동적으로 할당된 멀티모달 DSP 런타임 메모리 영역을 해제함
 CL_T2_DspEngine::~CL_T2_DspEngine() {
+
+    // 오디오 DSP 메모리 해제
     if (_audDsp) { heap_caps_free(_audDsp); _audDsp = nullptr; }
+    // 가속도 DSP 메모리 해제
     if (_accDsp) { heap_caps_free(_accDsp); _accDsp = nullptr; }
+    // 자이로 DSP 메모리 해제
     if (_gyrDsp) { heap_caps_free(_gyrDsp); _gyrDsp = nullptr; }
 
+    // 캡처 버퍼 메모리 해제
     if (_capBufL) { heap_caps_free(_capBufL); _capBufL = nullptr; }
     if (_capBufR) { heap_caps_free(_capBufR); _capBufR = nullptr; }
+
+    // 프로세스 버퍼 메모리 해제
     if (_prcBufL) { heap_caps_free(_prcBufL); _prcBufL = nullptr; }
     if (_prcBufR) { heap_caps_free(_prcBufR); _prcBufR = nullptr; }
 
+    // 가속도 센서 버퍼 메모리 해제
     if (_accBufX) { heap_caps_free(_accBufX); _accBufX = nullptr; }
     if (_accBufY) { heap_caps_free(_accBufY); _accBufY = nullptr; }
     if (_accBufZ) { heap_caps_free(_accBufZ); _accBufZ = nullptr; }
+
+    // 자이로 센서 버퍼 메모리 해제
     if (_gyrBufX) { heap_caps_free(_gyrBufX); _gyrBufX = nullptr; }
     if (_gyrBufY) { heap_caps_free(_gyrBufY); _gyrBufY = nullptr; }
     if (_gyrBufZ) { heap_caps_free(_gyrBufZ); _gyrBufZ = nullptr; }
 
+    // 힐베르트 변환 메모리 해제
     if (_accHilbertEnvX) { heap_caps_free(_accHilbertEnvX); _accHilbertEnvX = nullptr; }
     if (_accHilbertEnvY) { heap_caps_free(_accHilbertEnvY); _accHilbertEnvY = nullptr; }
     if (_accHilbertEnvZ) { heap_caps_free(_accHilbertEnvZ); _accHilbertEnvZ = nullptr; }
 }
 
-// 함수설명: 설정 구조체를 기반으로 마이크, 가속도, 자이로 채널별 DSP 메모리 할당 및 창 함수를 초기 배정합니다. (p_cfg: 설정 스냅샷 구조체, 반환값: 초기화 성공 여부)
+// 설정 구조체를 기반으로 마이크, 가속도, 자이로 채널별 DSP 메모리 할당 및 창 함수를 초기 배정합니다. (p_cfg: 설정 스냅샷 구조체, 반환값: 초기화 성공 여부)
 bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
+
     // esp-dsp FFT 하드웨어 가속/테이블 초기화 (누락 시 Core Panic 방지)
     esp_err_t v_fftRet = dsps_fft2r_init_fc32(NULL, T2_Def::Audio::Sensor::FFT_SIZE_MAX);
     if (v_fftRet != ESP_OK) {
         ESP_LOGE(TAG, "esp-dsp FFT Initialization Failed! Code: %d", v_fftRet);
     }
 
+    // 사용할 메모리 크기 계산
+    // 마이크 센서용 메모리 크기
     size_t v_fSizeAudio = sizeof(float) * T2_Def::Audio::Sensor::FFT_SIZE_MAX;
+    // 가속도 및 자이로 공통 메모리 크기
     size_t v_fSizeVib   = sizeof(float) * T2_Def::Accel::Sensor::FFT_SIZE_MAX;
 
     // [처리 단위 1] 마이크 센서용 DSP 메모리 동적 할당 및 윈도우 초기화
     if (p_cfg.audio.enable) {
+        // 마이크 DSP 런타임 구조체 메모리 할당 (IRAM 우선, 실패 시 SPIRAM 사용)
         if (!_audDsp) {
+            // IRAM 우선으로 할당하고, 실패 시 SPIRAM 사용
             _audDsp = (ST_AudioDspRuntime*)heap_caps_aligned_alloc(16, sizeof(ST_AudioDspRuntime), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
             if (!_audDsp) {
                 _audDsp = (ST_AudioDspRuntime*)heap_caps_aligned_alloc(16, sizeof(ST_AudioDspRuntime), MALLOC_CAP_SPIRAM);
             }
         }
+        // 윈도우 함수 초기화   
         if (_audDsp) {
             switch (p_cfg.audio.dsp.win_type) {
-                case T2_Type::EM_WindowType_t::HAMMING:  dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);  break;
-                case T2_Type::EM_WindowType_t::BLACKMAN: dsps_wind_blackman_f32(_audDsp->window, p_cfg.audio.fft_size); break;
-                default:                            dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);     break;
+                // 윈도우 타입 설정
+                case T2_Type::EM_WindowType_t::HAMMING:  
+                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);  
+                    break;
+                case T2_Type::EM_WindowType_t::BLACKMAN: 
+                    dsps_wind_blackman_f32(_audDsp->window, p_cfg.audio.fft_size); 
+                    break;
+                default:                            
+                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);     
+                    break;
             }
         }
 
+        // 캡처 버퍼 메모리 할당
         if (!_capBufL) _capBufL = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_prcBufL) _prcBufL = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_capBufR) _capBufR = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_prcBufR) _prcBufR = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    
     } else {
         if (_audDsp) { heap_caps_free(_audDsp); _audDsp = nullptr; }
         if (_capBufL) { heap_caps_free(_capBufL); _capBufL = nullptr; }
@@ -178,7 +205,7 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
         if (!_gyrBufY) _gyrBufY = (float*)heap_caps_aligned_alloc(16, v_fSizeVib, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_gyrBufZ) _gyrBufZ = (float*)heap_caps_aligned_alloc(16, v_fSizeVib, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-        // [신규] 힐버트 포락선 버퍼 할당 (SRAM)
+        // 힐버트 포락선 버퍼 할당 (SRAM)
         if (!_accHilbertEnvX) _accHilbertEnvX = (float*)heap_caps_aligned_alloc(16, v_fSizeVib, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_accHilbertEnvY) _accHilbertEnvY = (float*)heap_caps_aligned_alloc(16, v_fSizeVib, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_accHilbertEnvZ) _accHilbertEnvZ = (float*)heap_caps_aligned_alloc(16, v_fSizeVib, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -204,7 +231,7 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
     return true;
 }
 
-// 함수설명: 오디오, 가속도, 자이로별로 주파수 차단대역 및 차수 조건에 맞춰 필터 계수들을 재생성 재배치합니다. (p_cfg: 재생성용 설정 정보)
+// 오디오, 가속도, 자이로별로 주파수 차단대역 및 차수 조건에 맞춰 필터 계수들을 재생성 재배치합니다. (p_cfg: 재생성용 설정 정보)
 void CL_T2_DspEngine::reloadFilters(const T2_Type::ST_DynamicConfig_t& p_cfg) {
     // [처리 단위 1] 마이크 오디오 채널의 대역 필터 계수 갱신
     if (_audDsp) {
@@ -311,7 +338,7 @@ void CL_T2_DspEngine::reloadFilters(const T2_Type::ST_DynamicConfig_t& p_cfg) {
     ESP_LOGI(TAG, "Filters Reloaded (Taps:%d)", v_taps);
 }
 
-// 함수설명: 할당된 오디오, 가속도, 자이로 DSP 필터 인스턴스들의 상태 레지스터(과거 샘플 버퍼)를 모두 0으로 비웁니다.
+// 할당된 오디오, 가속도, 자이로 DSP 필터 인스턴스들의 상태 레지스터(과거 샘플 버퍼)를 모두 0으로 비웁니다.
 void CL_T2_DspEngine::resetStates() {
     if (_audDsp) {
         _audDsp->prev_pre_emp[0] = 0.0f;
@@ -345,7 +372,7 @@ void CL_T2_DspEngine::resetStates() {
 }
 
 
-// 함수설명: 빔포밍 연산 모드 여부에 맞춰 입력 사운드 파형 데이터를 받아 빔포밍 합성 또는 좌우 채널별 개별 노이즈게이트 및 대역 처리를 가합니다. (p_audL/R: 수신 오디오, p_outL/R: 출력 대상 버퍼, p_len: 크기, p_audCfg: 마이크 센서 설정)
+// 빔포밍 연산 모드 여부에 맞춰 입력 사운드 파형 데이터를 받아 빔포밍 합성 또는 좌우 채널별 개별 노이즈게이트 및 대역 처리를 가합니다. (p_audL/R: 수신 오디오, p_outL/R: 출력 대상 버퍼, p_len: 크기, p_audCfg: 마이크 센서 설정)
 void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, float* p_outL, float* p_outR, uint32_t p_len,
                                   const T2_Type::ST_Audio_Config_t& p_audCfg) {
     if (!_isInitialized || !_audDsp) return;
@@ -465,7 +492,7 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
     }
 }
 
-// 함수설명: 가속도 센서 3축 신호에 대해 메디안 정렬 필터, 노치 거부, 대역 IIR 및 FIR 필터, DC 오프셋 제거를 차례대로 병렬 처리 수행합니다. (p_inX/Y/Z: 원시 입력, p_outX/Y/Z: 출력 대상, p_len: 샘플 길이, p_accCfg: 센서 사양 구조체)
+// 가속도 센서 3축 신호에 대해 메디안 정렬 필터, 노치 거부, 대역 IIR 및 FIR 필터, DC 오프셋 제거를 차례대로 병렬 처리 수행합니다. (p_inX/Y/Z: 원시 입력, p_outX/Y/Z: 출력 대상, p_len: 샘플 길이, p_accCfg: 센서 사양 구조체)
 void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const float* p_inZ,
                                   float* p_outX, float* p_outY, float* p_outZ, uint32_t p_len,
                                   const T2_Type::ST_Accel_Config_t& p_accCfg) {
@@ -538,7 +565,7 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
     }
 }
 
-// 함수설명: 자이로 센서 3축 신호에 대해 메디안 정렬 필터, 노치 거부, 대역 IIR 및 FIR 필터, DC 오프셋 제거를 차례대로 병렬 처리 수행합니다. (p_inX/Y/Z: 원시 입력, p_outX/Y/Z: 출력 대상, p_len: 샘플 길이, p_gyrCfg: 센서 사양 구조체)
+// 자이로 센서 3축 신호에 대해 메디안 정렬 필터, 노치 거부, 대역 IIR 및 FIR 필터, DC 오프셋 제거를 차례대로 병렬 처리 수행합니다. (p_inX/Y/Z: 원시 입력, p_outX/Y/Z: 출력 대상, p_len: 샘플 길이, p_gyrCfg: 센서 사양 구조체)
 void CL_T2_DspEngine::processGyro(const float* p_inX, const float* p_inY, const float* p_inZ,
                                  float* p_outX, float* p_outY, float* p_outZ, uint32_t p_len,
                                   const T2_Type::ST_Gyro_Config_t& p_gyrCfg) {
@@ -578,7 +605,7 @@ void CL_T2_DspEngine::processGyro(const float* p_inX, const float* p_inY, const 
     }
 }
 
-// 함수설명: 주파수 스펙트럼 윈도윙용 LPF FIR 필터의 계수 배열 데이터를 생성합니다. (p_coeffs: 출력 버퍼, p_taps: 차수, p_cutoffHz: 차단주파수, p_sampleRate: 샘플율)
+// 주파수 스펙트럼 윈도윙용 LPF FIR 필터의 계수 배열 데이터를 생성합니다. (p_coeffs: 출력 버퍼, p_taps: 차수, p_cutoffHz: 차단주파수, p_sampleRate: 샘플율)
 void CL_T2_DspEngine::_generateFirLpf(float* p_coeffs, uint16_t p_taps, float p_cutoffHz, float p_sampleRate) {
     float v_ft = p_cutoffHz / p_sampleRate;
     for (int i = 0; i < p_taps; i++) {
@@ -594,7 +621,7 @@ void CL_T2_DspEngine::_generateFirLpf(float* p_coeffs, uint16_t p_taps, float p_
     }
 }
 
-// 함수설명: 주파수 스펙트럼 윈도윙용 HPF FIR 필터의 계수 배열 데이터를 생성합니다. (p_coeffs: 출력 버퍼, p_taps: 차수, p_cutoffHz: 차단주파수, p_sampleRate: 샘플율)
+// 주파수 스펙트럼 윈도윙용 HPF FIR 필터의 계수 배열 데이터를 생성합니다. (p_coeffs: 출력 버퍼, p_taps: 차수, p_cutoffHz: 차단주파수, p_sampleRate: 샘플율)
 void CL_T2_DspEngine::_generateFirHpf(float* p_coeffs, uint16_t p_taps, float p_cutoffHz, float p_sampleRate) {
     _generateFirLpf(p_coeffs, p_taps, p_cutoffHz, p_sampleRate);
     for (int i = 0; i < p_taps; i++) {
@@ -603,18 +630,18 @@ void CL_T2_DspEngine::_generateFirHpf(float* p_coeffs, uint16_t p_taps, float p_
     p_coeffs[(p_taps - 1) / 2] += 1.0f;
 }
 
-// 함수설명: IIR 대역 필터(HPF 또는 LPF)의 바이쿼드 계수를 연산하여 배열에 채워넣습니다. (p_freq: 컷오프Hz, p_q: Q인자, p_coeffs: 계수 출력 대상, p_sampleRate: 샘플율, p_isHpf: 고역통과 필터 여부)
+// IIR 대역 필터(HPF 또는 LPF)의 바이쿼드 계수를 연산하여 배열에 채워넣습니다. (p_freq: 컷오프Hz, p_q: Q인자, p_coeffs: 계수 출력 대상, p_sampleRate: 샘플율, p_isHpf: 고역통과 필터 여부)
 void CL_T2_DspEngine::_calcIirCoeffs(float p_freq, float p_q, float* p_coeffs, uint32_t p_sampleRate, bool p_isHpf) {
     if (p_isHpf) dsps_biquad_gen_hpf_f32(p_coeffs, p_freq / p_sampleRate, p_q);
     else dsps_biquad_gen_lpf_f32(p_coeffs, p_freq / p_sampleRate, p_q);
 }
 
-// 함수설명: Notch 대역 필터의 바이쿼드 차단 계수를 연산하여 배열에 채워넣습니다. (p_freq: 표적Hz, p_q: Q인자, p_coeffs: 계수 출력 대상, p_sampleRate: 샘플율)
+// Notch 대역 필터의 바이쿼드 차단 계수를 연산하여 배열에 채워넣습니다. (p_freq: 표적Hz, p_q: Q인자, p_coeffs: 계수 출력 대상, p_sampleRate: 샘플율)
 void CL_T2_DspEngine::_calcNotchCoeffs(float p_freq, float p_q, float* p_coeffs, uint32_t p_sampleRate) {
     dsps_biquad_gen_notch_f32(p_coeffs, p_freq / (float)p_sampleRate, -60.0f, p_q);
 }
 
-// 함수설명: 대역 내 급격한 고주파 피크성 스파이크 노이즈를 제거하기 위해 삽입 정렬 기반의 1차원 메디안 필터를 구동합니다. (p_data: 정규화 대상 데이터군, p_hist: 메디안 윈도우용 이력 데이터 배열, p_windowSize: 창 크기, p_len: 샘플 길이)
+// 대역 내 급격한 고주파 피크성 스파이크 노이즈를 제거하기 위해 삽입 정렬 기반의 1차원 메디안 필터를 구동합니다. (p_data: 정규화 대상 데이터군, p_hist: 메디안 윈도우용 이력 데이터 배열, p_windowSize: 창 크기, p_len: 샘플 길이)
 void CL_T2_DspEngine::_applyMedianFilter(float* p_data, float* p_hist, uint8_t p_windowSize, uint32_t p_len) {
     uint8_t v_ws = p_windowSize;
     if (v_ws > T2_Def::Global::Dsp::MEDIAN_WINDOW_MAX)
@@ -640,7 +667,7 @@ void CL_T2_DspEngine::_applyMedianFilter(float* p_data, float* p_hist, uint8_t p
     }
 }
 
-// 함수설명: 오디오 주파수 대역의 고주파 성분을 증폭 강조하기 위해 프리엠파시스 수식을 수행합니다. (p_data: 입력 배열 데이터, p_prevSample: 직전 주기 샘플 값 참조, p_len: 크기, p_alpha: 엠파시스 계수)
+// 오디오 주파수 대역의 고주파 성분을 증폭 강조하기 위해 프리엠파시스 수식을 수행합니다. (p_data: 입력 배열 데이터, p_prevSample: 직전 주기 샘플 값 참조, p_len: 크기, p_alpha: 엠파시스 계수)
 void CL_T2_DspEngine::_applyPreEmphasis(float* p_data, float& p_prevSample, uint32_t p_len, float p_alpha) {
     for (uint32_t i = 0; i < p_len; i++) {
         float current = p_data[i];
@@ -649,14 +676,14 @@ void CL_T2_DspEngine::_applyPreEmphasis(float* p_data, float& p_prevSample, uint
     }
 }
 
-// 함수설명: 수집한 데이터 중 오디오 임계 전력 레벨에 못 미치는 진폭을 소거 처리합니다. (p_data: 대상 데이터 버퍼, p_len: 크기, p_gateThresh: 임계 진폭 크기)
+// 수집한 데이터 중 오디오 임계 전력 레벨에 못 미치는 진폭을 소거 처리합니다. (p_data: 대상 데이터 버퍼, p_len: 크기, p_gateThresh: 임계 진폭 크기)
 void CL_T2_DspEngine::_applyNoiseGate(float* p_data, uint32_t p_len, float p_gateThresh) {
     for (uint32_t i = 0; i < p_len; i++) {
          if (fabsf(p_data[i]) < p_gateThresh) p_data[i] = 0.0f;
     }
 }
 
-// 함수설명: 배열 내부의 잘못된 NaN/INF 값을 무효화하고 단일 패스로 평균 오프셋 DC 성분을 소거합니다. (p_data: 대상 데이터 버퍼, p_len: 크기)
+// 배열 내부의 잘못된 NaN/INF 값을 무효화하고 단일 패스로 평균 오프셋 DC 성분을 소거합니다. (p_data: 대상 데이터 버퍼, p_len: 크기)
 void CL_T2_DspEngine::_removeDC(float* p_data, uint32_t p_len) {
     float v_sum = 0.0f;
     for (uint32_t i = 0; i < p_len; i++) {

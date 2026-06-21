@@ -802,16 +802,16 @@ void CL_T2_SensorEngine::flushHardwareFifo() {
 }
 
 // [신규] 딥슬립 Wake-up 설정
-void CL_T2_SensorEngine::prepareDeepSleepWakeup(float wake_g, uint16_t wake_dur) {
+void CL_T2_SensorEngine::prepareDeepSleepWakeup(float p_wakeG, uint16_t p_wakeDur) {
     if (!_isBmiInit) return;
     // 1. BMI270 Any-Motion 감지 레지스터 주파수 및 임계값 설정
     _writeRegSingle(0x5F, 0x01); // Any-motion feature enable
     float v_lsbMg = Imu::Hardware::ANY_MOTION_LSB_2G_MG * ((float)_accelRange / 2.0f);
-    uint8_t threshold = (uint8_t)(wake_g * 1000.0f / v_lsbMg);
-    _writeRegSingle(0x60, threshold); // Threshold write
+    uint8_t v_threshold = (uint8_t)(p_wakeG * 1000.0f / v_lsbMg);
+    _writeRegSingle(0x60, v_threshold); // Threshold write
 
     // Duration 설정 (30~45번 라인 등 Any-Motion 상세 명세에 맞춘 duration 필드)
-    _writeRegSingle(0x61, (uint8_t)(wake_dur & 0xFF));
+    _writeRegSingle(0x61, (uint8_t)(p_wakeDur & 0xFF));
 
     // 2. BMI270 INT2 핀 매핑 (모션 감지 시 RISING)
     _writeRegSingle(0x54, 0x04); // Map any-motion interrupt to INT2
@@ -844,15 +844,15 @@ void CL_T2_SensorEngine::startI2SDma() {
 }
 
 // [신규] 캘리브레이션 오프셋 동적 반영
-void CL_T2_SensorEngine::updateCalibrationOffsets(const float* offsets) {
-    if (offsets == nullptr) return;
+void CL_T2_SensorEngine::updateCalibrationOffsets(const float* p_offsets) {
+    if (p_offsets == nullptr) return;
     // offsets 순서: Accel X/Y/Z, Gyro X/Y/Z
-    _accOffsetX = offsets[0];
-    _accOffsetY = offsets[1];
-    _accOffsetZ = offsets[2];
-    _gyrOffsetX = offsets[3];
-    _gyrOffsetY = offsets[4];
-    _gyrOffsetZ = offsets[5];
+    _accOffsetX = p_offsets[0];
+    _accOffsetY = p_offsets[1];
+    _accOffsetZ = p_offsets[2];
+    _gyrOffsetX = p_offsets[3];
+    _gyrOffsetY = p_offsets[4];
+    _gyrOffsetZ = p_offsets[5];
     ESP_LOGI(TAG, "Calibration offsets hot-swapped.");
 }
 

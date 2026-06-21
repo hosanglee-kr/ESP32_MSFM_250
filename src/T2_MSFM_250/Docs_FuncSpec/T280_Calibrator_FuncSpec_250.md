@@ -6,7 +6,7 @@
 
 ## 1. 모듈 개요
 
-`T280_Calibrator` 모듈은 공정 설치 시 마이크의 조립 오차나 장비 고유 진동 등으로 인해 입력 감도가 평탄하지 않을 때, 표준 입력원에 맞춰 이득 곡선을 보정하는 **오프라인 캘리브레이션 연산기**입니다. Welch's Method 기반의 파워 스펙트럼 밀도(PSD) 평균 추출 및 역필터 IFFT 계산을 백그라운드 FreeRTOS 태스크로 실행하여 63차 FIR 이퀄라이저 계수(`eq_coeffs`)를 역산해 냅니다.
+`T280_Calibrator` 모듈은 공정 설치 시 마이크의 조립 오차나 장비 고유 진동 등으로 인해 입력 감도가 평탄하지 않을 때, 표준 입력원에 맞춰 이득 곡선을 보정하는 **오프라인 캘리브레이션 연산기**입니다. Welch's Method PSD(파워 스펙트럼 밀도) 평균 추출 및 역필터 IFFT 계산을 백그라운드 FreeRTOS 태스크로 실행하여 63차 FIR 이퀄라이저 계수(`eq_coeffs`)를 역산해 냅니다.
 
 ---
 
@@ -29,6 +29,7 @@
 
 ### `bool startAutoCalibration(const char* p_rawFilePath = nullptr)`
 *   **기능설명**: 자동 환경 보정 캘리브레이션을 구동합니다. 수동 캘리브레이션과 달리 공조 환경 소음 프로파일을 스캔하여 백그라운드 차감 필터 계수 보정을 주로 수행합니다.
+*   **LittleFS 상호 배제**: 보정 완료 후 환경 노이즈 프로필을 플래시에 저장하거나 읽어올 때, LittleFS VFS 붕괴를 예방하기 위해 ConfigManager의 `_fsLock` 뮤텍스 세마포어를 필히 획득합니다.
 *   **반환값**: 태스크 시작 성공 여부.
 
 ### `bool isRunning(void) const`
@@ -49,5 +50,16 @@
     보정 주파수 응답 곡선에 역 퓨리에 변환(IFFT)을 적용하여 시간 도메인의 FIR 필터 탭 계수로 변환합니다. 변환 후 Hann 윈도우를 다시 컨볼루션하여 잔여 사이드로브 노이즈를 억제한 최종 `63차` (`FIR_TAPS_DEF`) FIR 필터 계수를 완성하여 [T220_CfgMgr](../T220_CfgMgr_250.hpp)의 `eq_coeffs` 설정 파일 영역에 최종 덮어쓰기 기록합니다.
 4.  **WDT 리셋 및 메모리 정렬 가드**:
     연산 작업 시 CPU 연산 오버헤드로 인한 워치독 리셋을 예방하기 위해 주기적으로 `esp_task_wdt_reset()`을 호출하며, FPU 가속 명령이 적용된 16바이트 정렬 PSRAM 버퍼 영역을 연산 공간으로 활용합니다.
-5.  **SD_MMC 물리 버스 독점 Lock**:
+5.  **SD_MMC 물리 버스 독점 Lock 및 State Lock**:
     FSM이 `CALIBRATING` 상태로 진입 시, 실시간 로깅 세션을 강제로 안전 폐쇄하고 SD카드 버스를 캘리브레이터에 독점 제공하여 파일 IO 경합에 따른 데이터 유실을 미연에 방지합니다.
+6.  **캘리브레이션 리로드 (`CMD_RELOAD_CALIBRATION`) 연동**:
+    캘리브레이터가 역산 연산을 끝마치고 프로필 저장에 성공하면, FSM 매니저에 `CMD_RELOAD_CALIBRATION` 명령을 포스팅합니다. FSM은 이를 수신하여 센서엔진의 멤버 계수를 핫스왑 업데이트합니다.
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   캘리브레이션 핫스왑 갱신 반영을 위한 `CMD_RELOAD_CALIBRATION` 통신 연동 설계 추가.
+    *   LittleFS 환경 노이즈 프로필 접근 시 multi-core `_fsLock` 세마포어 의무 획득 정책 반영.
+    *   `CALIBRATING` 상태 전환 및 SD카드 I/O 배타 권한 획득(FSM State Lock) 명세 보완.

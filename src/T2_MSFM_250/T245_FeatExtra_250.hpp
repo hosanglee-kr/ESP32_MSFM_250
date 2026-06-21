@@ -13,6 +13,7 @@
 #include "T215_Type_250.hpp"
 #include "esp_dsp.h"
 #include <cstdint>
+#include <bitset>
 
 class CL_T2_FeatureExtractor {
 private:
@@ -64,7 +65,7 @@ private:
     void _extractTopPeaks(const float* p_power, uint32_t p_bins, float p_sampleRate, T2_Type::ST_SpectralPeak_t* p_outPeaks, uint8_t p_maxCount, float p_ampMin, float p_freqGap);
 	void _computeMfcc(const float* p_power, uint32_t p_bins, float* p_outMfcc, uint8_t p_chIdx, bool isAudio);
     float _computeSpectralCentroid(const float* p_power, uint32_t p_bins, float p_sampleRate);
-    void  _computeBandEnergies(const float* p_power, uint32_t p_bins, float p_sampleRate, uint8_t p_count, const bool* p_en, const float* p_start, const float* p_end, float* p_outEnergies);
+    void  _computeBandEnergies(const float* p_power, uint32_t p_bins, float p_sampleRate, uint8_t p_count, const std::bitset<16>& p_en, const float* p_start, const float* p_end, float* p_outEnergies);
 
 public:
     CL_T2_FeatureExtractor();

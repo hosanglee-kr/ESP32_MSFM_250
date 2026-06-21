@@ -24,6 +24,11 @@ static inline void cfgSet(JsonVariantConst p_v, T& p_dest) {
     if (!p_v.isNull()) p_dest = p_v.as<T>();
 }
 
+// 함수설명: bitset의 개별 비트 참조(std::bitset::reference)에 대한 cfgSet 특수화 오버로드입니다.
+static inline void cfgSet(JsonVariantConst p_v, std::bitset<16>::reference p_dest) {
+    if (!p_v.isNull()) p_dest = p_v.as<bool>();
+}
+
 // 함수설명: Null 체크를 거친 후 지정 버퍼 크기 내에서 안전하게 문자열을 복사합니다. (p_v: 소스 variant, p_dest: 목적지 버퍼, p_size: 크기)
 static inline void cfgStr(JsonVariantConst p_v, char* p_dest, size_t p_size) {
     if (!p_v.isNull()) {
@@ -957,7 +962,7 @@ bool CL_T2_ConfigManager::save() {
     JsonArray v_vbands = v_acc["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.accel.active_band_count; i++) {
         JsonObject v_b = v_vbands.add<JsonObject>();
-        v_b["en"]    = _dynConfig.accel.band_en[i];
+        v_b["en"]    = (bool)_dynConfig.accel.band_en[i];
         v_b["start"] = _dynConfig.accel.band_start[i];
         v_b["end"]   = _dynConfig.accel.band_end[i];
 
@@ -999,7 +1004,7 @@ bool CL_T2_ConfigManager::save() {
     JsonArray v_gbands = v_gyr["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.gyro.active_band_count; i++) {
         JsonObject v_b = v_gbands.add<JsonObject>();
-        v_b["en"]    = _dynConfig.gyro.band_en[i];
+        v_b["en"]    = (bool)_dynConfig.gyro.band_en[i];
         v_b["start"] = _dynConfig.gyro.band_start[i];
         v_b["end"]   = _dynConfig.gyro.band_end[i];
 
@@ -1037,7 +1042,7 @@ bool CL_T2_ConfigManager::save() {
     JsonArray v_abands = v_aud["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.audio.active_band_count; i++) {
         JsonObject v_b = v_abands.add<JsonObject>();
-        v_b["en"]    = _dynConfig.audio.band_en[i];
+        v_b["en"]    = (bool)_dynConfig.audio.band_en[i];
         v_b["start"] = _dynConfig.audio.band_start[i];
         v_b["end"]   = _dynConfig.audio.band_end[i];
 

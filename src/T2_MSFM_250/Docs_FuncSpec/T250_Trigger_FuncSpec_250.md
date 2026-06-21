@@ -17,13 +17,14 @@
 ### `CL_T2_TriggerEngine(void)`
 *   **기능설명**: 생성자로, 연속 오류 감지 시 시퀀스 래치 트리거를 확인하기 위한 연속 이상 카운터(`_trialCounter`)를 `0`으로 초기화합니다.
 
-### `T2_Type::EM_DetectionResult_t runDiagnostic(T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_DynamicConfig_t& p_cfg)`
+### `T2_Type::EM_DetectionResult_t runDiagnostic(T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_DynamicConfig_t& p_cfg, EM_SystemState_t systemState)`
 *   **기능설명**: 가속도/자이로 특징량이 담긴 진동 슬롯과 마이크 특징량이 담긴 오디오 슬롯 정보를 참조하여 런타임 룰 검사를 수행하고 최종 진단 상태를 결정해 반환합니다.
 *   **동작규격**:
-    1.  `_checkAccelRules`를 호출하여 가속도 센서의 3축(X/Y/Z) RMS, 왜도, 첨도, 파고율 및 밴드 에너지 임계치를 스캔합니다.
-    2.  `_checkGyroRules`를 호출하여 자이로 센서의 3축 RMS, 왜도, 첨도, 파고율 및 자이로 밴드 에너지를 점검합니다.
-    3.  `_checkAudioRules`를 호출하여 L/R 개별 RMS, 첨도, 파고율, 왜도 및 켑스트럼 피크 에너지 한계와 밴드 에너지 임계치를 체크합니다.
-    4.  각 서브 규칙 중 하나라도 초과 임계치를 기록할 시 비정상 상태(`RULE_VIB_NG` 또는 `RULE_AUDIO_NG`) 판정을 내리고 연속 감지 카운터를 조정합니다.
+    1.  **WARM_UP 단계 가드**: 시스템 FSM 상태가 `WARM_UP` 단계(기동 후 30초 동안)인 경우 LTA 안정화 기간이므로 트리거 엔진 판정을 강제 바이패스(PASS 반환)하여 시동 시 오경보 발생을 원천 차단합니다.
+    2.  `_checkAccelRules`를 호출하여 가속도 센서의 3축(X/Y/Z) RMS, 왜도, 첨도, 파고율 및 밴드 에너지 임계치를 스캔합니다.
+    3.  `_checkGyroRules`를 호출하여 자이로 센서의 3축 RMS, 왜도, 첨도, 파고율 및 자이로 밴드 에너지를 점검합니다.
+    4.  `_checkAudioRules`를 호출하여 L/R 개별 RMS, 첨도, 파고율, 왜도 및 켑스트럼 피크 에너지 한계와 밴드 에너지 임계치를 체크합니다.
+    5.  각 서브 규칙 중 하나라도 초과 임계치를 기록할 시 비정상 상태(`RULE_VIB_NG` 또는 `RULE_AUDIO_NG`) 판정을 내리고 연속 감지 카운터를 조정합니다.
 *   **반환값**: 진단 결과 열거형 (`EM_DetectionResult_t` : `PASS`, `RULE_VIB_NG`, `RULE_AUDIO_NG` 등).
 
 ### `void resetCounter(void)`
@@ -57,3 +58,21 @@
     *   **파고율 판정**: 축별 Crest Factor $\ge$ `crest_ng_thresh[axis]`
     *   **왜도 판정**: 축별 Skewness $\ge$ `skew_ng_thresh[axis]`
     *   **대역 에너지 판정**: 각 활성 주파수 대역 에너지 $\ge$ `band_thresh[axis][band]`
+
+---
+
+## 4. 락 오동작 방지 및 크래시 진단 연계
+
+1.  **공유 래치 상태 원자성**:
+    *   결함 판정 후 알람 플래그를 Latch 시 `_is_alarm_latched`와 같은 전역 공유 제어 변수는 `std::atomic<bool>` 형식에 기초하여 듀얼 코어 간 캐시 레이스 컨디션을 방지합니다.
+2.  **크래시 스냅샷 진단 연계**:
+    *   결함 최종 판정 및 비상 정지 트리거 실행 시점의 RMS 값과 진단 유형 결과는 `RTC_DATA_ATTR` 구조체인 `g_CrashDiag`에 저장되어, 향후 하드웨어 크래시나 WDT 부팅 시에도 직전 결함 상태를 즉각 파악 가능하도록 돕습니다.
+
+---
+
+## 5. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   FSM 상태 기계의 `WARM_UP` 단계(30초) 감지 시 트리거 엔진 판정 자동 PASS 가드 규칙 적용.
+    *   `std::atomic<bool>` 원자적 알람 래치 변수 동기화 명세 추가.
+    *   진단 룰 발동 시 RTC 메모리 `g_CrashDiag` 런타임 저장 연동 설계 추가.

@@ -19,8 +19,8 @@
 class CL_T2_Calibrator {
 private:
     TaskHandle_t _hCalibTask = nullptr;
-    
     CL_T2_FeatureExtractor* _refExtractor = nullptr;
+    std::atomic<bool> _isCompleted{false};
 
 public:
     CL_T2_Calibrator();
@@ -36,6 +36,9 @@ public:
     bool startAutoCalibration(const char* p_rawFilePath = nullptr);
 
     bool isRunning() const { return _hCalibTask != nullptr; }
+
+    bool isCompleted() const { return _isCompleted.load(); }
+    void clearCompleted() { _isCompleted.store(false); }
 
 private:
     struct CalibTaskParam {

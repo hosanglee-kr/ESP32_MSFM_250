@@ -650,7 +650,7 @@ void CL_T2_FeatureExtractor::_extractTopPeaks(const float* p_power, uint32_t p_b
     }
 }
 
-void CL_T2_FeatureExtractor::_computeBandEnergies(const float* p_power, uint32_t p_bins, float p_sampleRate, uint8_t p_count, const bool* p_en, const float* p_start, const float* p_end, float* p_outEnergies) {
+void CL_T2_FeatureExtractor::_computeBandEnergies(const float* p_power, uint32_t p_bins, float p_sampleRate, uint8_t p_count, const std::bitset<16>& p_en, const float* p_start, const float* p_end, float* p_outEnergies) {
     float v_binHz = (p_sampleRate / 2.0f) / (p_bins - 1);
 
     uint8_t v_limit = std::min((int)p_count, (int)T2_Def::Accel::FeatureLimit::BAND_MAX);

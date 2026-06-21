@@ -163,7 +163,7 @@ public:
     void flushHardwareFifo();
 
     // [신규] 딥슬립 Wake-up 설정
-    void prepareDeepSleepWakeup(float wake_g, uint16_t wake_dur);
+    void prepareDeepSleepWakeup(float p_wakeG, uint16_t p_wakeDur);
 
     // [신규] 딥슬립 복귀 레지스터 초기화
     void restoreFromDeepSleepWakeup();
@@ -173,7 +173,7 @@ public:
     void startI2SDma();
 
     // [신규] 캘리브레이션 오프셋 동적 반영
-    void updateCalibrationOffsets(const float* offsets);
+    void updateCalibrationOffsets(const float* p_offsets);
 };
 
 

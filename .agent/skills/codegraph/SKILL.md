@@ -43,3 +43,10 @@ codegraph install
 ```bash
 codegraph init -i
 ```
+
+## 최신 업데이트 안내
+
+- **자동 가상환경 부팅**: `update_codegraph.py` 은 이제 스크립트 내부에서 가상환경을 자동으로 부팅하고 필요한 패키지(`graphifyy`, `networkx`)를 설치합니다. 별도로 `venv` 를 만들 필요가 없습니다.
+- **데이터베이스 정리**: 실행 후 `.codegraph/codegraph.db` 가 정리되고, 불필요한 파일(예: `lib/esp-dsp/*`, `lib/SparkFun BMI270 Arduino Library/*`)이 삭제됩니다.  
+- **상태 확인**: `codegraph status` 를 실행하여 인덱싱 상태와 제거된 레코드 수를 확인하세요.
+- **다음 단계**: 그래프가 최신 상태이면 `graphify query "<질문>"` 로 바로 질문할 수 있습니다.

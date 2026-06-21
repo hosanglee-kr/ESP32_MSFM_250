@@ -6,7 +6,7 @@
 
 ## 1. 모듈 개요
 
-`T260_Storage` 모듈은 고속 센서 데이터 수집 흐름에 영향을 주지 않으면서 **SD카드(SD_MMC 인터페이스)**에 특징량 바이너리 파일과 대용량 원시(Raw) 파형 파일을 비동기로 기록하는 저널링 스토리지 엔진입니다. 실시간 쓰기 지연을 예방하기 위해 **PSRAM 링버퍼(Ring Buffer)와 비동기 태스크**를 운용하며, 이벤트 트리거 발생 이전 수초의 기록을 소급 보존하는 **프리트리거(Pre-Trigger) 캐시 버퍼링**을 내장하고 있습니다.
+`T260_Storage` 모듈은 고속 센서 데이터 수집 흐름에 영향을 주지 않으면서 **SD카드(SD_MMC 인터페이스)**에 특징량 바이너리 파일과 대용량 원시(Raw) 파형 파일을 비동기로 기록하는 스토리지 엔진입니다. 실시간 쓰기 지연을 예방하기 위해 **PSRAM 링버퍼(Ring Buffer)와 비동기 태스크**를 운용하며, 이벤트 트리거 발생 이전 수초의 기록을 소급 보존하는 **프리트리거(Pre-Trigger) 캐시 버퍼링**을 내장하고 있습니다.
 
 ---
 
@@ -14,7 +14,7 @@
 
 [T260_Storage_250.hpp](../T260_Storage_250.hpp) 클래스의 공개 API 및 구조 정보는 다음과 같습니다.
 
-### `static CL_StorageTaskManager& getInstance(void)`
+### `static CL_T2_StorageManager& getInstance(void)`
 *   **기능설명**: 비동기 스토리지 매니저의 싱글톤 인스턴스 참조를 획득합니다.
 
 ### `bool init(void)`
@@ -31,13 +31,14 @@
 *   **반환값**: 모든 파일 세션 정상 오픈 여부.
 
 ### `void closeSession(const char* p_reason)`
-*   **기능설명**: 비동기 링버퍼와 메시지 큐가 완전히 드레인될 때까지 최대 1초간 대기(Graceful Shutdown)한 후, 오픈 중인 모든 파일의 헤더를 최종 업데이트하고 안전하게 Close 처리합니다.
+*   **기능설명**: 세션 닫기 명령 시 FSM 태스크가 파일 I/O 완료를 위해 블로킹 대기하는 것을 회피하고 스토리지 전용 태스크(`StorageTask`) 내에서 플러시하도록 비동기 지연 해결 세마포어를 통해 Graceful하게 처리합니다. 비동기 링버퍼와 메시지 큐가 완전히 비워질 때까지 최대 1초(10ms 간격, 100회) 대기 가드 후 안전하게 파일 클로즈를 진행합니다.
 
 ### `bool pushAudioFrame(const T2_Type::ST_FeatureSlot_Aud_t* p_audFeat, const T2_Type::ST_Raw_Audio_t* p_rawAud)`
 *   **기능설명**: 실시간 처리 코어로부터 산출된 오디오 특징 정보 및 원시 샘플 파형 데이터를 프리트리거 링버퍼(`_preAudBuf`)에 적재합니다. 이벤트 트리거 중일 경우 즉시 비동기 쓰기 링버퍼(`_asyncAudRing`)로 데이터를 이송합니다.
+*   **뮤텍스 디커플링 (Lock Decoupling)**: 물리적 SD 카드 쓰기 시 수백 ms 소요되는 지연으로 인해 수집 파이프라인이 붕괴되는 것을 차단하기 위해, `_lock` 뮤텍스는 오직 링버퍼 포인터 갱신 및 큐 데이터 push 연산(수 마이크로초)에만 취득하고, 물리 기입은 락 영역 밖에서 비동기 태스크가 단독 수행합니다.
 
 ### `bool pushVibFrame(const T2_Type::ST_FeatureSlot_Vib_t* p_vibFeat, const T2_Type::ST_Raw_Accel_t* p_rawAcc, const T2_Type::ST_Raw_Gyro_t* p_rawGyr)`
-*   **기능설명**: 가속도/자이로 특징량 및 물리 파형 데이터를 가속도 프리트리거 버퍼에 적재하고, 트리거 상황 시 비동기 링버퍼(`_asyncVibRing`)로 고속 인출 이송합니다.
+*   **기능설명**: 가속도/자이로 특징량 및 물리 파형 데이터를 가속도 프리트리거 버퍼에 적재하고, 트리거 상황 시 비동기 링버퍼(`_asyncVibRing`)로 고속 인출 이송합니다. 포인터 복사를 방지하는 제로 카피 원칙과 뮤텍스 디커플링을 동일하게 준수합니다.
 
 ### `bool flush(void)`
 *   **기능설명**: 비동기 링버퍼에 적체되어 있는 잔여 바이트를 강제로 백그라운드 태스크에 이송하여 SD카드 파일에 완전히 밀어냅니다(Sync).
@@ -48,12 +49,17 @@
 ### `bool attemptRecovery(void)`
 *   **기능설명**: 쓰기 오류나 SD카드 임시 이탈 감지 시, VFS 마운트를 해제하고 재접속을 시도하여 쓰기 세션을 복구합니다.
 
+### `bool hasIoError(void)`
+*   **기능설명**: SD 카드 물리 에러 발생 유무를 감지하여 런타임에 FSM 매니저에 보고합니다.
+
 ### `void dumpPreTriggerToSession()`
 *   **기능설명**: 세션 기동 시점에 수집되어 있던 과거 중요 전조 파형(Pre-Trigger) 데이터를 신규 파일의 최상단에 우선 기록합니다.
-*   **스냅샷 바운스 버퍼링**: SD 카드 파일 I/O 블로킹 시간 동안 `pushAudioFrame`과의 Lock 경합을 차단하기 위해, `_lock`을 획득하여 프리트리거 데이터를 임시 로컬 메모리 버퍼로 빠르게 일괄 복사한 후 `_lock`을 즉시 해제(Release)하여 실시간 수집 지연을 수 마이크로초 수준으로 줄입니다.
+*   **스냅샷 바운스 버퍼링 및 락 격리**:
+    *   10초 분량(최대 3.36MB)을 스택 오버플로우 없이 담기 위해 전용 PSRAM 영역에 정적 스냅샷 버퍼(`g_preTriggerSnapshotBuffer`)를 외부 할당하여 사용합니다.
+    *   `_lock`을 획득하고 링 버퍼에 있는 데이터를 임시 PSRAM 스냅샷 버퍼로 고속 일괄 복사한 후 `_lock`을 즉시 해제(Release)하여 경합을 차단하며, 이후 물리적인 SD 파일 기입은 락 영역 외부에서 비차단 방식으로 전송합니다.
 
 ### `bool saveNoiseProfile(const float* p_profile, size_t p_size)` / `loadNoiseProfile(...)`
-*   **기능설명**: 엣지 단에서 자가 학습된 배경 소음 노이즈 프로필(`_noiseProfile`)을 LittleFS 파일 시스템의 `/sys/noise_profile.bin` 경로에 저장하고 부팅 시 자동으로 복원하는 기능을 제공합니다. LittleFS 동시 접근 방지를 위해 `_fsLock` 세마포어(Mutex) 동기화를 거칩니다.
+*   **기능설명**: 엣지 단에서 자가 학습된 배경 소음 노이즈 프로필을 LittleFS 파일 시스템의 `/sys/noise_profile.bin` 경로에 저장하고 복원하는 기능을 제공합니다. LittleFS VFS 충돌 방지를 위해 `_fsLock` 세마포어(Mutex) 동기화를 거칩니다.
 
 ---
 
@@ -64,3 +70,15 @@
 
 2.  **바운스 버퍼 (Bounce Buffer) 운용 정책**:
     ESP32-S3 SD/MMC DMA 컨트롤러가 PSRAM 물리 캐시 라인 미스에 의해 오작동을 유발하지 않도록, 쓰기 직전 SRAM 영역에 `alignas(16)` 정렬 선언된 중간 바운스 버퍼(`_bounceAudFeat` 등)에 데이터를 먼저 복사하고 물리 저장을 개시하여 안정성을 100% 확보합니다.
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   클래스명을 `CL_T2_StorageManager`로 현행화.
+    *   물리 파일 I/O 시 락을 잡지 않는 락 디커플링(Lock Decoupling) 명세 반영.
+    *   스택 오버플로우 방지용 대용량 `g_preTriggerSnapshotBuffer` PSRAM 배치 및 락 격리 스냅샷 덤프 설계 보완.
+    *   FSM 블로킹을 방지하기 위한 `closeSession` 비동기 지연 해결 설계 반영.
+    *   SD_MMC 물리 에러 처리를 위한 `hasIoError` API 추가.
+    *   LittleFS VFS 접근 보호를 위한 `_fsLock` 세마포어 가드 정책 반영.

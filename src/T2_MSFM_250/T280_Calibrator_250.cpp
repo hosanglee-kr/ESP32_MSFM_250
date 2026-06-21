@@ -56,6 +56,8 @@ CL_T2_Calibrator::~CL_T2_Calibrator() {
 bool CL_T2_Calibrator::startAutoCalibration(const char* p_rawFilePath) {
     if (_hCalibTask != nullptr) return false;
 
+    _isCompleted.store(false);
+
     CalibTaskParam* v_param = new CalibTaskParam();
     v_param->instance = this;
     v_param->isManual = false;
@@ -76,6 +78,8 @@ bool CL_T2_Calibrator::startAutoCalibration(const char* p_rawFilePath) {
 
 bool CL_T2_Calibrator::startManualCalibration(const char* p_rawFilePath) {
     if (_hCalibTask != nullptr) return false;
+
+    _isCompleted.store(false);
 
     CalibTaskParam* v_param = new CalibTaskParam();
     v_param->instance = this;
@@ -101,7 +105,7 @@ void CL_T2_Calibrator::_calibTaskProc(void* p_param) {
     if (v_param->isManual) v_param->instance->_processManual(v_param->filePath);
     else v_param->instance->_processAuto(v_param->filePath);
 
-    T240_DispatchCommand(T2_Type::EM_SystemCommand_t::CMD_STOP);
+    v_param->instance->_isCompleted.store(true);
     v_param->instance->_hCalibTask = nullptr;
     delete v_param;
     vTaskDelete(NULL);
@@ -133,9 +137,9 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
         if (v_accChunk) {
             while (v_accFile.available() >= sizeof(T2_Type::ST_Raw_Accel_t)) {
                 v_accFile.read((uint8_t*)v_accChunk, sizeof(T2_Type::ST_Raw_Accel_t));
-                for (int a = 0; a < T2_Def::Accel::Sensor::AXIS_MAX; a++) {
-                    for (int i = 0; i < T2_Def::Accel::Sensor::FFT_SIZE_MAX; i++) {
-                        v_sumSqAcc[a] += (double)(v_accChunk->data[a][i] * v_accChunk->data[a][i]);
+                for (int v_a = 0; v_a < T2_Def::Accel::Sensor::AXIS_MAX; v_a++) {
+                    for (int v_i = 0; v_i < T2_Def::Accel::Sensor::FFT_SIZE_MAX; v_i++) {
+                        v_sumSqAcc[v_a] += (double)(v_accChunk->data[v_a][v_i] * v_accChunk->data[v_a][v_i]);
                     }
                 }
                 v_totalAccChunks++;
@@ -156,9 +160,9 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
         if (v_gyrChunk) {
             while (v_gyrFile.available() >= sizeof(T2_Type::ST_Raw_Gyro_t)) {
                 v_gyrFile.read((uint8_t*)v_gyrChunk, sizeof(T2_Type::ST_Raw_Gyro_t));
-                for (int a = 0; a < T2_Def::Gyro::Sensor::AXIS_MAX; a++) {
-                    for (int i = 0; i < T2_Def::Gyro::Sensor::FFT_SIZE_MAX; i++) {
-                        v_sumSqGyr[a] += (double)(v_gyrChunk->data[a][i] * v_gyrChunk->data[a][i]);
+                for (int v_a = 0; v_a < T2_Def::Gyro::Sensor::AXIS_MAX; v_a++) {
+                    for (int v_i = 0; v_i < T2_Def::Gyro::Sensor::FFT_SIZE_MAX; v_i++) {
+                        v_sumSqGyr[v_a] += (double)(v_gyrChunk->data[v_a][v_i] * v_gyrChunk->data[v_a][v_i]);
                     }
                 }
                 v_totalGyrChunks++;
@@ -180,9 +184,9 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
             size_t v_readBytes = T2_Def::Audio::Sensor::FFT_SIZE_MAX * 2 * sizeof(float);
             while (v_wavFile.available() >= v_readBytes) {
                 v_wavFile.read((uint8_t*)v_audBuf, v_readBytes);
-                for (int i = 0; i < T2_Def::Audio::Sensor::FFT_SIZE_MAX; i++) {
-                    v_sumSqAudioL += (double)(v_audBuf[i * 2] * v_audBuf[i * 2]);
-                    v_sumSqAudioR += (double)(v_audBuf[i * 2 + 1] * v_audBuf[i * 2 + 1]);
+                for (int v_i = 0; v_i < T2_Def::Audio::Sensor::FFT_SIZE_MAX; v_i++) {
+                    v_sumSqAudioL += (double)(v_audBuf[v_i * 2] * v_audBuf[v_i * 2]);
+                    v_sumSqAudioR += (double)(v_audBuf[v_i * 2 + 1] * v_audBuf[v_i * 2 + 1]);
                 }
                 v_totalAudChunks++;
                 esp_task_wdt_reset();
@@ -196,18 +200,18 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
 
     float v_baseAcc = 0.0f;
     if (v_totalAccChunks > 0) {
-        for (int a = 0; a < T2_Def::Accel::Sensor::AXIS_MAX; a++) {
-            float v_rms = (float)sqrt(v_sumSqAcc[a] / (v_totalAccChunks * T2_Def::Accel::Sensor::FFT_SIZE_MAX));
-            v_cfg.accel.rms_thresh[a] = fmaxf(v_rms * 3.0f, 0.01f);
+        for (int v_a = 0; v_a < T2_Def::Accel::Sensor::AXIS_MAX; v_a++) {
+            float v_rms = (float)sqrt(v_sumSqAcc[v_a] / (v_totalAccChunks * T2_Def::Accel::Sensor::FFT_SIZE_MAX));
+            v_cfg.accel.rms_thresh[v_a] = fmaxf(v_rms * 3.0f, 0.01f);
             if (v_rms > v_baseAcc) v_baseAcc = v_rms;
         }
     }
 
     float v_baseGyr = 0.0f;
     if (v_totalGyrChunks > 0) {
-        for (int a = 0; a < T2_Def::Gyro::Sensor::AXIS_MAX; a++) {
-            float v_rms = (float)sqrt(v_sumSqGyr[a] / (v_totalGyrChunks * T2_Def::Gyro::Sensor::FFT_SIZE_MAX));
-            v_cfg.gyro.rms_thresh[a] = fmaxf(v_rms * 3.0f, 0.01f);
+        for (int v_a = 0; v_a < T2_Def::Gyro::Sensor::AXIS_MAX; v_a++) {
+            float v_rms = (float)sqrt(v_sumSqGyr[v_a] / (v_totalGyrChunks * T2_Def::Gyro::Sensor::FFT_SIZE_MAX));
+            v_cfg.gyro.rms_thresh[v_a] = fmaxf(v_rms * 3.0f, 0.01f);
             if (v_rms > v_baseGyr) v_baseGyr = v_rms;
         }
     }
@@ -217,14 +221,14 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
         v_baseAudL = (float)sqrt(v_sumSqAudioL / (v_totalAudChunks * T2_Def::Audio::Sensor::FFT_SIZE_MAX));
         v_baseAudR = (float)sqrt(v_sumSqAudioR / (v_totalAudChunks * T2_Def::Audio::Sensor::FFT_SIZE_MAX));
         float v_maxBaseAud = fmaxf(v_baseAudL, v_baseAudR);
-        for (int ch = 0; ch < 2; ch++) {
-            v_cfg.audio.rms_thresh[ch] = fmaxf(v_maxBaseAud * 3.0f, 0.005f);
+        for (int v_ch = 0; v_ch < 2; v_ch++) {
+            v_cfg.audio.rms_thresh[v_ch] = fmaxf(v_maxBaseAud * 3.0f, 0.005f);
         }
     }
 
     CL_T2_ConfigManager::getInstance().updateConfigLazy(v_cfg);
 
-    File v_csv = SD_MMC.open("/t240_data/auto_history.csv", "a");
+    File v_csv = SD_MMC.open("/t240_data/auto_history.csv", "v_a");
     if (v_csv) {
         v_csv.printf("%llu,%.6f,%.6f,%.6f,%.6f\n", (uint64_t)time(NULL), v_baseAcc, v_baseGyr, v_baseAudL, v_baseAudR);
         v_csv.close();
@@ -289,16 +293,16 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
         size_t v_readBytes = v_samples * 2 * sizeof(float);
         while (v_wavFile.available() >= v_readBytes) {
             v_wavFile.read((uint8_t*)v_audBuf, v_readBytes);
-            for (uint32_t i = 0; i < v_samples; i++) {
-                v_fftWork[i * 2] = (v_audBuf[i * 2] + v_audBuf[i * 2 + 1]) * 0.5f;
-                v_fftWork[i * 2 + 1] = 0.0f;
+            for (uint32_t v_i = 0; v_i < v_samples; v_i++) {
+                v_fftWork[v_i * 2] = (v_audBuf[v_i * 2] + v_audBuf[v_i * 2 + 1]) * 0.5f;
+                v_fftWork[v_i * 2 + 1] = 0.0f;
             }
 
             dsps_fft2r_fc32(v_fftWork, v_samples);
             dsps_bit_rev_fc32(v_fftWork, v_samples);
 
-            for (uint16_t i = 0; i <= v_samples / 2; i++) {
-                v_powerAcc[i] += (v_fftWork[i * 2] * v_fftWork[i * 2] + v_fftWork[i * 2 + 1] * v_fftWork[i * 2 + 1]);
+            for (uint16_t v_i = 0; v_i <= v_samples / 2; v_i++) {
+                v_powerAcc[v_i] += (v_fftWork[v_i * 2] * v_fftWork[v_i * 2] + v_fftWork[v_i * 2 + 1] * v_fftWork[v_i * 2 + 1]);
             }
             v_count++;
             esp_task_wdt_reset();
@@ -311,7 +315,7 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
         T2_Type::ST_DynamicConfig_t v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
         float v_binHz = (float)v_cfg.audio.sample_rate / v_samples;
 
-        for (uint16_t i = 0; i <= v_samples / 2; i++) v_powerAcc[i] /= v_count;
+        for (uint16_t v_i = 0; v_i <= v_samples / 2; v_i++) v_powerAcc[v_i] /= v_count;
 
         uint16_t v_refBin = (uint16_t)(v_cfg.audio.ref_freq / v_binHz);
         float v_refAmp = sqrtf(fmaxf(v_powerAcc[v_refBin], T2_Def::Global::System::MATH_EPSILON_12_CONST));
@@ -320,19 +324,19 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
         uint16_t v_minBin = (uint16_t)(v_cfg.audio.filt_min / v_binHz);
         uint16_t v_maxBin = (uint16_t)(v_cfg.audio.filt_max / v_binHz);
 
-        for (uint16_t i = 0; i <= v_samples / 2; i++) {
-            float v_amp = sqrtf(fmaxf(v_powerAcc[i], T2_Def::Global::System::MATH_EPSILON_12_CONST));
+        for (uint16_t v_i = 0; v_i <= v_samples / 2; v_i++) {
+            float v_amp = sqrtf(fmaxf(v_powerAcc[v_i], T2_Def::Global::System::MATH_EPSILON_12_CONST));
             float v_targetGain = 1.0f;
 
-            if (i >= v_minBin && i <= v_maxBin) {
+            if (v_i >= v_minBin && v_i <= v_maxBin) {
                 v_targetGain = v_refAmp / v_amp;
                 if (v_targetGain > v_cfg.audio.gain_max) v_targetGain = v_cfg.audio.gain_max;
                 if (v_targetGain < v_cfg.audio.gain_min) v_targetGain = v_cfg.audio.gain_min;
             }
 
-            v_fftWork[i * 2] = v_targetGain; v_fftWork[i * 2 + 1] = 0.0f;
-            if (i > 0 && i < v_samples / 2) {
-                v_fftWork[(v_samples - i) * 2] = v_targetGain; v_fftWork[(v_samples - i) * 2 + 1] = 0.0f;
+            v_fftWork[v_i * 2] = v_targetGain; v_fftWork[v_i * 2 + 1] = 0.0f;
+            if (v_i > 0 && v_i < v_samples / 2) {
+                v_fftWork[(v_samples - v_i) * 2] = v_targetGain; v_fftWork[(v_samples - v_i) * 2 + 1] = 0.0f;
             }
         }
 
@@ -346,9 +350,9 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
         dsps_fft2r_fc32(v_fftWork, v_samples);
         dsps_bit_rev_fc32(v_fftWork, v_samples);
         float v_invN = 1.0f / (float)v_samples;
-        for (uint32_t i = 0; i < v_samples; i++) {
-            v_fftWork[i * 2]     *= v_invN;
-            v_fftWork[i * 2 + 1] *= -v_invN; // 출력 켤레 복소수화 (Conjugate)
+        for (uint32_t v_i = 0; v_i < v_samples; v_i++) {
+            v_fftWork[v_i * 2]     *= v_invN;
+            v_fftWork[v_i * 2 + 1] *= -v_invN; // 출력 켤레 복소수화 (Conjugate)
         }
 
         uint16_t v_taps = T2_Def::Audio::FeatureLimit::FIR_TAPS_DEF;
@@ -357,19 +361,19 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
         dsps_wind_blackman_f32(v_win, v_taps);
 
         float v_sumAbs = 0.0f;
-        for (int i = 0; i < v_taps; i++) {
-            int16_t v_tIdx = i - v_center;
+        for (int v_i = 0; v_i < v_taps; v_i++) {
+            int16_t v_tIdx = v_i - v_center;
             uint16_t v_fIdx = (v_tIdx >= 0) ? v_tIdx : (v_samples + v_tIdx);
-            float v_val = v_fftWork[v_fIdx * 2] * v_win[i];
+            float v_val = v_fftWork[v_fIdx * 2] * v_win[v_i];
 
-            v_cfg.audio.eq_coeffs[0][i] = v_val; v_cfg.audio.eq_coeffs[1][i] = v_val;
+            v_cfg.audio.eq_coeffs[0][v_i] = v_val; v_cfg.audio.eq_coeffs[1][v_i] = v_val;
             v_sumAbs += fabsf(v_val);
         }
 
         if (v_sumAbs > v_cfg.audio.norm_safe) {
             float v_scale = v_cfg.audio.norm_safe / v_sumAbs;
-            for (int i = 0; i < v_taps; i++) {
-                v_cfg.audio.eq_coeffs[0][i] *= v_scale; v_cfg.audio.eq_coeffs[1][i] *= v_scale;
+            for (int v_i = 0; v_i < v_taps; v_i++) {
+                v_cfg.audio.eq_coeffs[0][v_i] *= v_scale; v_cfg.audio.eq_coeffs[1][v_i] *= v_scale;
             }
             ESP_LOGW(TAG, "FIR Normalized by L1-Norm (v246): %.3f", v_scale);
         }

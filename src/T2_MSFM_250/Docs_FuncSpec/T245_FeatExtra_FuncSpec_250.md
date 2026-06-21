@@ -23,12 +23,13 @@
 
 ### `void extractAccel(const float* p_inX, const float* p_inY, const float* p_inZ, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_Accel_Config_t& p_accCfg)`
 *   **기능설명**: 3축 가속도 신호로부터 RMS, Crest Factor, Skewness, Kurtosis, 대역별 에너지와 푸리에 파워 스펙트럼 및 진동 특징 벡터들을 연쇄 계산하여 진동 지표 슬롯에 저장합니다. (가속도 정책인 `AccelPolicy`에 의해 가속도 MFCC 계산은 생략되고 `0.0f`로 우회 마스킹됩니다.)
+*   **제로 카피 데이터 공유**: 대용량 복사 오버헤드를 막기 위해 특징 추출기로의 데이터 전달은 원시 버퍼 복사(`memcpy`) 대신 링버퍼의 포인터 주소를 직접 참조(`enqueuePointer`)하도록 설계되었습니다.
 
 ### `void extractGyro(const float* p_inX, const float* p_inY, const float* p_inZ, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot, const T2_Type::ST_Gyro_Config_t& p_gyrCfg)`
 *   **기능설명**: 자이로 3축 원시 각속도 신호를 1차 차분(각가속도) 도메인으로 변환한 뒤의 단구간 RMS 에너지 및 왜도, 첨도, 대역별 에너지와 드리프트 추정값(자이로 특화)을 산출하여 슬롯을 채웁니다. (위상 왜곡을 초래하는 Zero-Crossing Rate 연산은 전면 폐기되었으며, `GyroPolicy`에 의해 자이로 MFCC 연산은 `0.0f` 마스킹 처리됩니다.)
 
 ### `void extractAudio(const float* p_audL, const float* p_audR, uint32_t p_len, uint32_t p_sampleRate, T2_Type::ST_FeatureSlot_Aud_t& p_audSlot, const T2_Type::ST_Audio_Config_t& p_audCfg)`
-*   **기능설명**: 좌우 마이크 음원 파형 데이터에 대해 단시간 푸리에 변환(STFT)을 수행하고, 파워 스펙트럼, 켑스트럼 피크 오차 비율 및 2채널 오디오 MFCC와 델타/더블델타 시계열 계수를 연산하고, 32개 1/3 옥타브 밴드 상대 에너지 비율 벡터(Timbre 지표)를 산출해 내어 MFCC와 융합합니다. (다중 반사 왜곡을 일으키던 공간 위상 지표 Coherence 및 IPD는 전면 삭제되었습니다.)
+*   **기능설명**: 좌우 마이크 음원 파형 데이터에 대해 단시간 푸리에 변환(STFT)을 수행하고, 파워 스펙트럼, 켑스트럼 피크 오차 비율 및 2채널 오디오 MFCC와 델타/더블델타 시계열 계수를 연산하고, 32개 1/3 옥타브 밴드 상대 에너지 비율 벡터(Timbre 지표)를 산출해 내어 MFCC와 융합합니다. (공간 위상 지표 Coherence 및 IPD는 전면 삭제되었습니다.)
 
 ### `void setNoiseLearning(bool p_enable)` / `void resetNoiseProfile(void)`
 *   **기능설명**: 배경 소음 감산을 위한 노이즈 스펙트럼 적응형 학습의 기동 및 메모리 리셋을 제어합니다.
@@ -47,9 +48,9 @@
     *   **평균 제곱근 (RMS)**:
         $$\text{RMS} = \sqrt{\frac{1}{N}\sum_{n=0}^{N-1} x[n]^2}$$
     *   **첨도 (Kurtosis)**:
-        $$\text{Kurtosis} = \frac{\frac{1}{N}\sum (x[n] - \mu)^4}{\sigma^4}$$
+        $$ \text{Kurtosis} = \frac{\frac{1}{N}\sum (x[n] - \mu)^4}{\sigma^4} $$
     *   **왜도 (Skewness)**:
-        $$\text{Skewness} = \frac{\frac{1}{N}\sum (x[n] - \mu)^3}{\sigma^3}$$
+        $$ \text{Skewness} = \frac{\frac{1}{N}\sum (x[n] - \mu)^3}{\sigma^3} $$
     *   **파고율 (Crest Factor)**:
         $$\text{Crest Factor} = \frac{\max(|x[n]|)}{\text{RMS}}$$
 
@@ -64,11 +65,28 @@
 3.  **템플릿 Traits 기반 연산 마스킹 규칙 (FPU 부하 최적화)**:
     인터페이스의 단일성을 유지하면서 도메인별 불필요한 FPU 연산(예: 진동 신호의 MFCC 연산 등)을 전면 생략하고 마스킹하기 위해 정책 Traits를 도입합니다.
     *   **가속도 정책 (`AccelPolicy`)**:
-        - 16밴드 에너지만 연산 (`ENABLE_BAND_ENERGY = true`)
-        - MFCC 연산 생략 및 `0.0f`로 우회 마스킹 (`ENABLE_MFCC = false`)
+        - `enable_mfcc` = false (MFCC 연산 생략 및 `0.0f`로 우회 마스킹)
+        - `enable_fft` = true
+        - `enable_timbre` = false
+        - `enable_band_energy` = true
+        - `band_count` = 8 (8밴드 에너지 연산)
     *   **자이로 정책 (`GyroPolicy`)**:
-        - 하위 2개 저주파 밴드만 누적 연산 (`ENABLE_BAND_ENERGY = true`, `BAND_COUNT = 2`)
-        - MFCC 연산 생략 및 `0.0f` 마스킹 (`ENABLE_MFCC = false`)
+        - `enable_mfcc` = false (MFCC 연산 생략 및 `0.0f` 마스킹)
+        - `enable_fft` = true
+        - `enable_timbre` = false
+        - `enable_band_energy` = true
+        - `band_count` = 4 (저주파 4개 밴드만 누적 연산)
     *   **오디오 정책 (`AudioPolicy`)**:
-        - MFCC 연산 활성화 (`ENABLE_MFCC = true`)
-        - 1/3 옥타브 밴드 상대 에너지(Timbre) 융합 활성화 (`ENABLE_TIMBRE = true`, `BAND_COUNT = 32`)
+        - `enable_mfcc` = true (MFCC 연산 활성화)
+        - `enable_fft` = true
+        - `enable_timbre` = true (1/3 옥타브 밴드 상대 에너지 융합 활성화)
+        - `enable_band_energy` = true
+        - `band_count` = 16
+
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   `T2_General` 네임스페이스 Policy Traits 확장 변경 내역 반영 (Gyro 밴드 수 4개 조정 및 오디오 밴드 수 16개 반영).
+    *   가속도/오디오/자이로 특징량 수집 데이터 패스 간 Zero-Copy 포인터 인출 원칙 추가.

@@ -65,6 +65,6 @@ public:
     bool isConnected() const { return WiFi.status() == WL_CONNECTED; }
 
     // [신규] MQTT 클라이언트 동적 재생성 및 웹소켓 연결 확인 게터
-    void recreateMqttClient(const esp_mqtt_client_config_t& new_cfg);
+    void recreateMqttClient(const esp_mqtt_client_config_t& p_newCfg);
     bool hasActiveWebsockets() const { return _ws.count() > 0; }
 };

@@ -31,6 +31,9 @@
 ### `void resetStates(void)`
 *   **기능설명**: 모든 필터 채널(X, Y, Z, L, R)에 대한 과거 상태 딜레이 라인(Delay Stage) 이력 버퍼 값을 전부 `0.0f`로 완전 소거하여 이전 연산 이력의 간섭을 차단합니다.
 
+### `void prepare_complex_fft_buffer(const float* raw_real_data, float* complex_buffer, size_t n)`
+*   **기능설명**: 복소수 FFT 연산 수행 시 발생하는 인덱스 오버플로우 메모리 붕괴(Memory Corruption)를 차단하기 위해 실수 데이터를 복소수 구조에 복사할 때 짝수=실수(Real Part), 홀수=0.0f(Imaginary Part)로 교차 배치하여 `2 * n` 크기를 강제 동기화합니다.
+
 ### `void processAudio(const float* p_audL, const float* p_audR, float* p_outL, float* p_outR, uint32_t p_len, const T2_Type::ST_Audio_Config_t& p_audCfg)`
 *   **기능설명**: 좌우 스테레오 원시 입력 파형에 대해 아래의 전처리 파이프라인을 연속 수행합니다.
 *   **처리 파이프라인 시퀀스**:
@@ -49,11 +52,12 @@
     4.  **Notch 필터 및 대역 필터**: 60Hz/120Hz Notch 및 IIR/FIR 밴드 필터링 적용.
 
 ### `void processGyro(const float* p_inX, const float* p_inY, const float* p_inZ, float* p_outX, float* p_outY, float* p_outZ, uint32_t p_len, const T2_Type::ST_Gyro_Config_t& p_gyrCfg)`
-*   **기능설명**: 자이로 3축 센서 수집 신호에 대해 1차 차분 신호 전처리 및 경량 IIR 밴드 필터링을 수행합니다. (SRAM 절감을 위해 고차 FIR 계수와 255/127차 상태 배열은 완전히 제거하고 경량 3축 x 4차 IIR 바이쿼드 계수/상태 버퍼 구조체인 `ST_GyroDspRuntime`로 대체되었습니다.)
+*   **기능설명**: 자이로 3축 센서 수집 신호에 대해 1차 차분 신호 전처리 및 경량 IIR 밴드 필터링을 수행합니다.
+*   **SRAM 자원 절약 및 FIR 제거**: 자이로의 고차 FIR 상태 버퍼 및 FIR 계수 배열을 완전히 배제하고, 초경량화된 IIR 바이쿼드 필터 구조인 `ST_GyroDspRuntime_t`로 전환하여 SRAM 소비를 방지합니다.
 
 ---
 
-## 3. 핵심 필터 연산 규격
+## 3. 핵심 필터 연산 및 메모리 규격
 
 1.  **Notch 필터 계수 산출 (Biquad IIR)**:
     아날로그 전원 노이즈 제거를 위한 Biquad 전달함수 $H(s)$의 계수를 산출합니다.
@@ -63,12 +67,27 @@
         *   $b_0 = 1, \quad b_1 = -2\cos(\omega_0), \quad b_2 = 1$
         *   $a_0 = 1 + \alpha, \quad a_1 = -2\cos(\omega_0), \quad a_2 = 1 - \alpha$
     *   계수 정규화: $a_0$로 모든 $a, b$ 계수를 나누어 최종 Biquad 계수 집합을 생성하고 `dsps_biquad_f32_ae32` SIMD 어셈블리 함수로 고속 수행합니다.
-
 2.  **FIR 필터 계수 산출 (Windowed Sinc)**:
     차단 주파수 $f_c$에 대해 아래식으로 LPF Sinc 함수 계수를 구하고 Hann Window를 취합니다.
     *   Sinc 함수 계수 ($n = -\frac{N-1}{2} \dots \frac{N-1}{2}$):
         $$h[n] = \frac{\sin(2\pi \cdot f_c \cdot n / f_s)}{\pi \cdot n}$$
     *   $h[0] = \frac{2f_c}{f_s}$ 로 정의한 후 Hann Window $w[n]$을 곱해 계수 차단 마진을 정립합니다.
+3.  **자이로 전용 초경량 IIR 구조체 (`ST_GyroDspRuntime_t`)**:
+    ```cpp
+    struct ST_GyroDspRuntime_t {
+        float iir_hpf_state[3][4]; // 3축 x 4차 IIR 바이쿼드 계수/상태 버퍼
+        float iir_lpf_state[3][4];
+    };
+    ```
+4.  **필터 계수 ROM direct 페치 최적화 (`SMEA_FLASH_RODATA`)**:
+    *   고정 필터 계수 배열은 플래시 ROM 상주(`.rodata` 섹션)를 강제하고 ESP32-S3 SIMD 연산을 위해 16바이트 정렬을 적용하여 힙/SRAM 복사에 따른 자원 낭비를 차단합니다.
+    *   `#define SMEA_FLASH_RODATA __attribute__((section(".rodata"), aligned(16)))`
 
-3.  **복소수 FFT 연산을 위한 2*N 구조 강제화**:
-    복소수 FFT 연산 수행 시 발생하는 인덱스 오버플로우 메모리 붕괴(Memory Corruption)를 차단하기 위해 실수 데이터 복소 버퍼 복사 시 짝수 인덱스는 실수부로, 홀수 인덱스는 허수부(`0.0f`)로 교차 배치하여 `2*N` 버퍼 크기를 강제 동기화합니다.
+---
+
+## 4. 변경 및 갱신 이력 (Revision History)
+
+*   **v2.50 (2026-06-21)**:
+    *   `prepare_complex_fft_buffer` API 및 2*N 복소 버퍼 정렬 무결성 사양 도입.
+    *   자이로 `ST_GyroDspRuntime_t` 경량 HPF/LPF IIR 상태 전이로 메모리 최적화 규격 갱신 (고차 FIR 제거).
+    *   동적 notch 계수(RAM)와 고정 IIR/FIR 계수(`SMEA_FLASH_RODATA`, ROM) 격리 설계 보완 반영.

@@ -278,13 +278,13 @@ bool CL_T2_Communicator::publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& 
     return true;
 }
 
-void CL_T2_Communicator::recreateMqttClient(const esp_mqtt_client_config_t& new_cfg) {
+void CL_T2_Communicator::recreateMqttClient(const esp_mqtt_client_config_t& p_newCfg) {
     if (_mqttHandle) {
         esp_mqtt_client_stop(_mqttHandle);
         esp_mqtt_client_destroy(_mqttHandle);
         _mqttHandle = nullptr;
     }
-    _mqttHandle = esp_mqtt_client_init(&new_cfg);
+    _mqttHandle = esp_mqtt_client_init(&p_newCfg);
     if (_mqttHandle) {
         esp_mqtt_client_register_event(_mqttHandle, (esp_mqtt_event_id_t)MQTT_EVENT_ANY, _mqttEventHandler, this);
         // esp_mqtt_client_start는 runNetwork에서 시간 동기 완료 후 수행
