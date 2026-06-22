@@ -127,6 +127,9 @@ private:
 
     static CL_T2_FsmManager* s_pInstance;   // ISR 역참조용 싱글톤 포인터
 
+    // ISR에서 private 멤버 접근 허용
+    friend void T2_90_IMU_watermark_isr();
+
     CL_T2_SensorEngine      _sensor;        // 센서 엔진
     CL_T2_DspEngine         _dsp;           // DSP 엔진
     CL_T2_FeatureExtractor  _extractor;     // 특징 추출 엔진
