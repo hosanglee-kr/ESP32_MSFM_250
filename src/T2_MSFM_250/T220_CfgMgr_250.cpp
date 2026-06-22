@@ -30,7 +30,7 @@ static inline void cfgSet(JsonVariantConst p_v, std::bitset<16>::reference p_des
 }
 
 // Null 체크를 거친 후 지정 버퍼 크기 내에서 안전하게 문자열을 복사합니다. (p_v: 소스 variant, p_dest: 목적지 버퍼, p_size: 크기)
-static inline void cfgStr(JsonVariantConst p_v, char* p_dest, size_t p_size) {
+static inline void T2_20_Cfg_StrCopy(JsonVariantConst p_v, char* p_dest, size_t p_size) {
     if (!p_v.isNull()) {
         const char* v_src = p_v.as<const char*>();
         if (v_src) strlcpy(p_dest, v_src, p_size);
@@ -475,7 +475,7 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
     // [처리 단위 1] system 파라미터 파싱
     JsonObjectConst v_sys = p_doc["system"];
     if (!v_sys.isNull()) {
-        cfgStr(v_sys["site_id"], _dynConfig.system.site_id, sizeof(_dynConfig.system.site_id));
+        T2_20_Cfg_StrCopy(v_sys["site_id"], _dynConfig.system.site_id, sizeof(_dynConfig.system.site_id));
         cfgSet(v_sys["tele_hz"], _dynConfig.system.tele_hz);
         cfgSet(v_sys["wave_hz"], _dynConfig.system.wave_hz);
         if (!v_sys["op_mode"].isNull()) {
@@ -490,17 +490,17 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
         if (!v_wifi["mode"].isNull()) {
             _dynConfig.wifi.mode = (T2_Type::EM_WiFiMode_t)v_wifi["mode"].as<uint8_t>();
         }
-        cfgStr(v_wifi["ap_ssid"], _dynConfig.wifi.ap_ssid, sizeof(_dynConfig.wifi.ap_ssid));
-        cfgStr(v_wifi["ap_pw"],   _dynConfig.wifi.ap_pw,   sizeof(_dynConfig.wifi.ap_pw));
-        cfgStr(v_wifi["ap_ip"],   _dynConfig.wifi.ap_ip,   sizeof(_dynConfig.wifi.ap_ip));
+        T2_20_Cfg_StrCopy(v_wifi["ap_ssid"], _dynConfig.wifi.ap_ssid, sizeof(_dynConfig.wifi.ap_ssid));
+        T2_20_Cfg_StrCopy(v_wifi["ap_pw"],   _dynConfig.wifi.ap_pw,   sizeof(_dynConfig.wifi.ap_pw));
+        T2_20_Cfg_StrCopy(v_wifi["ap_ip"],   _dynConfig.wifi.ap_ip,   sizeof(_dynConfig.wifi.ap_ip));
 
         JsonArrayConst v_multi = v_wifi["multi_ap"];
         if (!v_multi.isNull()) {
             uint8_t i = 0;
             for (JsonObjectConst v_ap : v_multi) {
                 if (i >= T2_Def::Global::NetLimit::NET_MULTI_AP_MAX) break;
-                cfgStr(v_ap["ssid"], _dynConfig.wifi.multi_ssid[i], sizeof(_dynConfig.wifi.multi_ssid[i]));
-                cfgStr(v_ap["pw"],   _dynConfig.wifi.multi_pw[i],   sizeof(_dynConfig.wifi.multi_pw[i]));
+                T2_20_Cfg_StrCopy(v_ap["ssid"], _dynConfig.wifi.multi_ssid[i], sizeof(_dynConfig.wifi.multi_ssid[i]));
+                T2_20_Cfg_StrCopy(v_ap["pw"],   _dynConfig.wifi.multi_pw[i],   sizeof(_dynConfig.wifi.multi_pw[i]));
                 i++;
             }
         }
@@ -511,12 +511,12 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
     JsonObjectConst v_mqtt = p_doc["mqtt"];
     if (!v_mqtt.isNull()) {
         cfgSet(v_mqtt["enable"],     _dynConfig.mqtt.enable);
-        cfgStr(v_mqtt["broker"],     _dynConfig.mqtt.broker, sizeof(_dynConfig.mqtt.broker));
+        T2_20_Cfg_StrCopy(v_mqtt["broker"],     _dynConfig.mqtt.broker, sizeof(_dynConfig.mqtt.broker));
         cfgSet(v_mqtt["port"],       _dynConfig.mqtt.port);
-        cfgStr(v_mqtt["id"],         _dynConfig.mqtt.id,     sizeof(_dynConfig.mqtt.id));
-        cfgStr(v_mqtt["pw"],         _dynConfig.mqtt.pw,     sizeof(_dynConfig.mqtt.pw));
-        cfgStr(v_mqtt["topic_root"], _dynConfig.mqtt.topic_root, sizeof(_dynConfig.mqtt.topic_root));
-        cfgStr(v_mqtt["lwt_topic"],  _dynConfig.mqtt.lwt_topic,  sizeof(_dynConfig.mqtt.lwt_topic));
+        T2_20_Cfg_StrCopy(v_mqtt["id"],         _dynConfig.mqtt.id,     sizeof(_dynConfig.mqtt.id));
+        T2_20_Cfg_StrCopy(v_mqtt["pw"],         _dynConfig.mqtt.pw,     sizeof(_dynConfig.mqtt.pw));
+        T2_20_Cfg_StrCopy(v_mqtt["topic_root"], _dynConfig.mqtt.topic_root, sizeof(_dynConfig.mqtt.topic_root));
+        T2_20_Cfg_StrCopy(v_mqtt["lwt_topic"],  _dynConfig.mqtt.lwt_topic,  sizeof(_dynConfig.mqtt.lwt_topic));
         cfgSet(v_mqtt["qos"],        _dynConfig.mqtt.qos);
         cfgSet(v_mqtt["proto_ver"],  _dynConfig.mqtt.proto_ver);
     }
@@ -524,9 +524,9 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
     // [처리 단위 4] NTP 파라미터 파싱
     JsonObjectConst v_ntp = p_doc["ntp"];
     if (!v_ntp.isNull()) {
-        cfgStr(v_ntp["ntp_server1"], _dynConfig.ntp.ntp_server1, sizeof(_dynConfig.ntp.ntp_server1));
-        cfgStr(v_ntp["ntp_server2"], _dynConfig.ntp.ntp_server2, sizeof(_dynConfig.ntp.ntp_server2));
-        cfgStr(v_ntp["ntp_tz"],      _dynConfig.ntp.ntp_tz,      sizeof(_dynConfig.ntp.ntp_tz));
+        T2_20_Cfg_StrCopy(v_ntp["ntp_server1"], _dynConfig.ntp.ntp_server1, sizeof(_dynConfig.ntp.ntp_server1));
+        T2_20_Cfg_StrCopy(v_ntp["ntp_server2"], _dynConfig.ntp.ntp_server2, sizeof(_dynConfig.ntp.ntp_server2));
+        T2_20_Cfg_StrCopy(v_ntp["ntp_tz"],      _dynConfig.ntp.ntp_tz,      sizeof(_dynConfig.ntp.ntp_tz));
     }
 
     // [처리 단위 5] storage 파라미터 파싱 (안전 상한 검증 포함)
