@@ -34,7 +34,7 @@ const float g_T2_40_Dsp_HilbertCoeffs_arr[31] SMEA_FLASH_RODATA = {
     0.0145f, 0.0f, 0.0084f, 0.0f, 0.0051f
 };
 
-inline void safe_dsps_fir_f32(fir_f32_t* fir, const float* input, float* output, int len) {
+inline void T2_40_Dsp_safe_dsps_fir_f32(fir_f32_t* fir, const float* input, float* output, int len) {
     if (fir->N % 4 == 0) {
         dsps_fir_f32_aes3(fir, input, output, len);
     } else {
@@ -477,9 +477,9 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             // IIR 로우패스 필터
             if (v_dsp.iir_lpf.en) dsps_biquad_f32_aes3(p_outL, p_outL, v_len, _audDsp->iir_lpf_coeffs, _audDsp->iir_lpf_state[0]);
             // FIR 하이패스 필터
-            if (v_dsp.hpf.en) safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[0], p_outL, p_outL, v_len);
+            if (v_dsp.hpf.en) T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[0], p_outL, p_outL, v_len);
             // FIR 로우패스 필터
-            if (v_dsp.lpf.en) safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[0], p_outL, p_outL, v_len);
+            if (v_dsp.lpf.en) T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[0], p_outL, p_outL, v_len);
             // 노이즈 게이트
             if (p_audCfg.noise.gate_en) _applyNoiseGate(p_outL, v_len, p_audCfg.noise.gate_thresh);
         }
@@ -525,11 +525,11 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             }
             // FIR 하이패스 필터
             if (v_dsp.hpf.en) {
-                safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[0], p_outL, p_outL, v_len);
+                T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[0], p_outL, p_outL, v_len);
             }
             // FIR 로우패스 필터
             if (v_dsp.lpf.en) {
-                safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[0], p_outL, p_outL, v_len);
+                T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[0], p_outL, p_outL, v_len);
             }
             // 노이즈 게이트
             if (p_audCfg.noise.gate_en) {
@@ -571,11 +571,11 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             }
             // FIR 하이패스 필터
             if (v_dsp.hpf.en) {
-                safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[1], p_outR, p_outR, v_len);
+                T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_hpf[1], p_outR, p_outR, v_len);
             }
             // FIR 로우패스 필터
             if (v_dsp.lpf.en) {
-                safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[1], p_outR, p_outR, v_len);
+                T2_40_Dsp_safe_dsps_fir_f32(&_audDsp->fir_inst_lpf[1], p_outR, p_outR, v_len);
             }
             // 노이즈 게이트
             if (p_audCfg.noise.gate_en) {
@@ -649,11 +649,11 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
 
         // FIR 하이패스 필터
         if (v_dsp.hpf.en) {
-            safe_dsps_fir_f32(&_accDsp->fir_inst_hpf[i], v_out[i], v_out[i], p_len);
+            T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_hpf[i], v_out[i], v_out[i], p_len);
         }
         // FIR 로우패스 필터
         if (v_dsp.lpf.en) {
-            safe_dsps_fir_f32(&_accDsp->fir_inst_lpf[i], v_out[i], v_out[i], p_len);
+            T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_lpf[i], v_out[i], v_out[i], p_len);
         }
 
         // DC 제거
@@ -665,7 +665,7 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
         // 임시 버퍼 준비
         alignas(16) float hilbertPhaseShift[T2_Def::Accel::Sensor::FFT_SIZE_MAX] = {0};
         // 힐버트 변환
-        safe_dsps_fir_f32(&_accDsp->fir_inst_hilbert[i], v_out[i], hilbertPhaseShift, p_len);
+        T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_hilbert[i], v_out[i], hilbertPhaseShift, p_len);
 
         // 군지연 보정
         const uint16_t delay = T2_Def::Accel::FeatureLimit::HILBERT_GROUP_DELAY;

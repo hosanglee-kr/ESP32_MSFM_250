@@ -178,7 +178,7 @@ graph TD
 *   **3축 DSP 필터 체인 연산**:
     1.  **메디안 필터링 (`_applyMedianFilter`)**: 풀스케일 95% 초과 스파이크 성분 감지 시에만 윈도우 크기 5의 메디안 필터를 적응형으로 돌려 잡음을 제거합니다.
     2.  **Notch 및 IIR 필터**: `_accDsp->notch_coeffs` 및 2차 Notch 계수 배열을 적용해 특정 이상 공진 주파수를 제거합니다. 이후 컷오프 주파수를 반영한 바이쿼드 IIR 필터를 적용합니다.
-    3.  **힐버트 포락선 추출**: 31차 FIR 힐버트 변환 매크로(`safe_dsps_fir_f32`)를 사용해 위상이 90도 밀린 복소 가상 축 신호를 생성합니다. 15 샘플 군지연 보정을 수행하여 `v_out_delayed(t - 15)`와 위상 천이 신호를 제곱 합산한 후 제곱근을 구해 `_accHilbertEnvX/Y/Z` 포락선 버퍼에 적재합니다.
+    3.  **힐버트 포락선 추출**: 31차 FIR 힐버트 변환 매크로(`T2_40_Dsp_safe_dsps_fir_f32`)를 사용해 위상이 90도 밀린 복소 가상 축 신호를 생성합니다. 15 샘플 군지연 보정을 수행하여 `v_out_delayed(t - 15)`와 위상 천이 신호를 제곱 합산한 후 제곱근을 구해 `_accHilbertEnvX/Y/Z` 포락선 버퍼에 적재합니다.
 *   **특징량 발행**: 추출된 RMS, 첨도(Kurtosis), 크레스트 팩터 데이터를 `_sharedCtx->vib_slots[write_idx]`에 저장한 후 `vib_idx.store(write_idx, std::memory_order_release)`를 통해 메모리 가드를 해제합니다.
 
 #### ③ `AudProcTask` (Core 1, Prio 6) - Audio Domain 및 Shared 융합

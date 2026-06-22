@@ -13,23 +13,23 @@ static const char* TAG = "T220_CFG";
 
 // [이슈 11] g_psramAlloc 제거 — 10KB 미만 JSON을 PSRAM에 담으면 캐시 미스 오버헤드가 발생함. 기본 내부 힙 할당 사용.
 
-// 함수설명: 정밀도 손실 없이 float 인수를 JsonArray에 추가합니다. (p_arr: 대상 배열, p_val: 추가할 값)
-static inline void cfgAddFloatExact(JsonArray& p_arr, float p_val) {
+// 정밀도 손실 없이 float 인수를 JsonArray에 추가합니다. (p_arr: 대상 배열, p_val: 추가할 값)
+static inline void T2_20_Cfg_AddFloatExact(JsonArray& p_arr, float p_val) {
     p_arr.add(p_val);
 }
 
-// 함수설명: Null 체크를 거쳐 안전하게 값을 복사 반영합니다. (p_v: 소스 variant, p_dest: 목적지 변수 참조)
+// Null 체크를 거쳐 안전하게 값을 복사 반영합니다. (p_v: 소스 variant, p_dest: 목적지 변수 참조)
 template<typename T>
 static inline void cfgSet(JsonVariantConst p_v, T& p_dest) {
     if (!p_v.isNull()) p_dest = p_v.as<T>();
 }
 
-// 함수설명: bitset의 개별 비트 참조(std::bitset::reference)에 대한 cfgSet 특수화 오버로드입니다.
+// bitset의 개별 비트 참조(std::bitset::reference)에 대한 cfgSet 특수화 오버로드입니다.
 static inline void cfgSet(JsonVariantConst p_v, std::bitset<16>::reference p_dest) {
     if (!p_v.isNull()) p_dest = p_v.as<bool>();
 }
 
-// 함수설명: Null 체크를 거친 후 지정 버퍼 크기 내에서 안전하게 문자열을 복사합니다. (p_v: 소스 variant, p_dest: 목적지 버퍼, p_size: 크기)
+// Null 체크를 거친 후 지정 버퍼 크기 내에서 안전하게 문자열을 복사합니다. (p_v: 소스 variant, p_dest: 목적지 버퍼, p_size: 크기)
 static inline void cfgStr(JsonVariantConst p_v, char* p_dest, size_t p_size) {
     if (!p_v.isNull()) {
         const char* v_src = p_v.as<const char*>();
@@ -37,9 +37,9 @@ static inline void cfgStr(JsonVariantConst p_v, char* p_dest, size_t p_size) {
     }
 }
 
-// 함수설명: 배열 타입의 JSON 입력을 안전하게 파싱하여 배열 메모리에 적재합니다. (p_v: 소스 variant, p_dest: 대상 배열 참조)
+// 배열 타입의 JSON 입력을 안전하게 파싱하여 배열 메모리에 적재합니다. (p_v: 소스 variant, p_dest: 대상 배열 참조)
 template<typename T, size_t N>
-static inline void cfgSetArray(JsonVariantConst p_v, T (&p_dest)[N]) {
+static inline void T2_20_Cfg_SetArray(JsonVariantConst p_v, T (&p_dest)[N]) {
     if (p_v.isNull()) return;
     if (p_v.is<JsonArrayConst>()) {
         JsonArrayConst v_arr = p_v.as<JsonArrayConst>();
@@ -55,7 +55,7 @@ static inline void cfgSetArray(JsonVariantConst p_v, T (&p_dest)[N]) {
     }
 }
 
-// 함수설명: DSP 파이프라인의 개별 필터 설정을 JSON 오브젝트로부터 파싱합니다. (p_obj: 소스 JSON 객체, p_dsp: 타겟 구조체 참조)
+// DSP 파이프라인의 개별 필터 설정을 JSON 오브젝트로부터 파싱합니다. (p_obj: 소스 JSON 객체, p_dsp: 타겟 구조체 참조)
 static void parseDspConfig(JsonObjectConst p_obj, T2_Type::ST_Dsp_Config_t& p_dsp) {
     if (p_obj.isNull()) return;
     cfgSet(p_obj["rem_dc"],  p_dsp.rem_dc);
@@ -105,7 +105,7 @@ static void parseDspConfig(JsonObjectConst p_obj, T2_Type::ST_Dsp_Config_t& p_ds
     }
 }
 
-// 함수설명: 메모리(RAM) 상의 DSP 파라미터들을 출력용 JSON 객체로 직렬화 출력합니다. (p_obj: 타겟 JSON 객체, p_dsp: 소스 구조체 참조)
+// 메모리(RAM) 상의 DSP 파라미터들을 출력용 JSON 객체로 직렬화 출력합니다. (p_obj: 타겟 JSON 객체, p_dsp: 소스 구조체 참조)
 static void serializeDspConfig(JsonObject p_obj, const T2_Type::ST_Dsp_Config_t& p_dsp) {
     p_obj["rem_dc"]  = p_dsp.rem_dc;
     p_obj["med_en"]  = p_dsp.med_en;
@@ -146,7 +146,7 @@ static void serializeDspConfig(JsonObject p_obj, const T2_Type::ST_Dsp_Config_t&
     p_obj["win_type"] = (uint8_t)p_dsp.win_type;
 }
 
-// 함수설명: 설정 관리자 생성자이며, Mutex 및 멤버 변수를 기본 초기화합니다.
+// 설정 관리자 생성자이며, Mutex 및 멤버 변수를 기본 초기화합니다.
 CL_T2_ConfigManager::CL_T2_ConfigManager() {
     _lock           = xSemaphoreCreateMutex();
     _isLoaded       = false;
@@ -156,12 +156,12 @@ CL_T2_ConfigManager::CL_T2_ConfigManager() {
     _loadDefaults();
 }
 
-// 함수설명: 설정 관리자 소멸자이며, 사용된 Mutex 동기화 객체를 해제합니다.
+// 설정 관리자 소멸자이며, 사용된 Mutex 동기화 객체를 해제합니다.
 CL_T2_ConfigManager::~CL_T2_ConfigManager() {
     if (_lock) vSemaphoreDelete(_lock);
 }
 
-// 함수설명: LittleFS 마운트 상태 검증 및 부팅 시 원자적 복구 작업을 개시합니다. (반환값: 성공 여부)
+// LittleFS 마운트 상태 검증 및 부팅 시 원자적 복구 작업을 개시합니다. (반환값: 성공 여부)
 bool CL_T2_ConfigManager::init() {
     // [신규] WAL 드라이버 초기화
     _walDriver.init();
@@ -192,7 +192,7 @@ bool CL_T2_ConfigManager::init() {
     return true;
 }
 
-// 함수설명: 4-Tier 시스템 설정 구조체의 기본값들을 초기 적재합니다.
+// 4-Tier 시스템 설정 구조체의 기본값들을 초기 적재합니다.
 void CL_T2_ConfigManager::_loadDefaults() {
     // === Tier 1. Global ===
     strlcpy(_dynConfig.system.site_id, T2_Def::Global::System::SITE_ID_DEF, sizeof(_dynConfig.system.site_id));
@@ -221,7 +221,7 @@ void CL_T2_ConfigManager::_loadDefaults() {
     _dynConfig.mqtt.qos        = T2_Def::Global::Net::MQTT_QOS_DEF;
     _dynConfig.mqtt.proto_ver  = T2_Def::Global::Net::MQTT_PROTO_VER_DEF;
 
-    // [이슈 9] NTP 타임서버 기본값 초기화
+    // NTP 타임서버 기본값 초기화
     strlcpy(_dynConfig.ntp.ntp_server1, T2_Def::Global::Net::NTP_SERVER_1_CONST, sizeof(_dynConfig.ntp.ntp_server1));
     strlcpy(_dynConfig.ntp.ntp_server2, T2_Def::Global::Net::NTP_SERVER_2_CONST, sizeof(_dynConfig.ntp.ntp_server2));
     strlcpy(_dynConfig.ntp.ntp_tz,      T2_Def::Global::Net::NTP_TZ_INFO_CONST,  sizeof(_dynConfig.ntp.ntp_tz));
@@ -237,7 +237,7 @@ void CL_T2_ConfigManager::_loadDefaults() {
     _dynConfig.output.output_sequence  = false;
     _dynConfig.output.sequence_frames  = T2_Def::Global::System::SEQUENCE_FRAMES_DEF;
 
-    // [이슈 8] Decision 파라미터 기본값
+    // Decision 파라미터 기본값
     _dynConfig.decision.max_trial_count   = T2_Def::Global::Decision::MAX_TRIAL_COUNT_DEF;
     _dynConfig.decision.sta_lta_threshold = T2_Def::Global::Decision::STA_LTA_THRESHOLD_DEF;
     _dynConfig.decision.min_trigger_count = T2_Def::Global::Decision::MIN_TRIGGER_COUNT_DEF;
@@ -470,7 +470,7 @@ void CL_T2_ConfigManager::_loadDefaults() {
     _dynConfig.audio.dsp.win_type       = T2_Type::EM_WindowType_t::HANN;
 }
 
-// 함수설명: 수신한 JSON 문서를 4-Tier 시스템 설정 구조체에 적용합니다. (p_doc: 파싱된 JSON 문서 참조)
+// 수신한 JSON 문서를 4-Tier 시스템 설정 구조체에 적용합니다. (p_doc: 파싱된 JSON 문서 참조)
 void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
     // [처리 단위 1] system 파라미터 파싱
     JsonObjectConst v_sys = p_doc["system"];
@@ -604,10 +604,10 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
         cfgSet(v_acc["wake_g"],         _dynConfig.accel.wake_g);
         cfgSet(v_acc["wake_dur"],       _dynConfig.accel.wake_dur);
 
-        cfgSetArray(v_acc["rms_thresh"],      _dynConfig.accel.rms_thresh);
-        cfgSetArray(v_acc["kurt_ng_thresh"],  _dynConfig.accel.kurt_ng_thresh);
-        cfgSetArray(v_acc["crest_ng_thresh"], _dynConfig.accel.crest_ng_thresh);
-        cfgSetArray(v_acc["skew_ng_thresh"],  _dynConfig.accel.skew_ng_thresh);
+        T2_20_Cfg_SetArray(v_acc["rms_thresh"],      _dynConfig.accel.rms_thresh);
+        T2_20_Cfg_SetArray(v_acc["kurt_ng_thresh"],  _dynConfig.accel.kurt_ng_thresh);
+        T2_20_Cfg_SetArray(v_acc["crest_ng_thresh"], _dynConfig.accel.crest_ng_thresh);
+        T2_20_Cfg_SetArray(v_acc["skew_ng_thresh"],  _dynConfig.accel.skew_ng_thresh);
 
         JsonArrayConst v_bands = v_acc["bands"];
         if (!v_bands.isNull()) {
@@ -636,8 +636,8 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
             _dynConfig.accel.active_band_count = i;
         }
 
-        cfgSetArray(v_acc["offset"], _dynConfig.accel.offset);
-        cfgSetArray(v_acc["gain"],   _dynConfig.accel.gain);
+        T2_20_Cfg_SetArray(v_acc["offset"], _dynConfig.accel.offset);
+        T2_20_Cfg_SetArray(v_acc["gain"],   _dynConfig.accel.gain);
         cfgSet(v_acc["peak_amp_min"],      _dynConfig.accel.peak_amp_min);
         cfgSet(v_acc["peak_freq_gap_min"], _dynConfig.accel.peak_freq_gap_min);
 
@@ -657,10 +657,10 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
         cfgSet(v_gyr["sample_rate"], _dynConfig.gyro.sample_rate);
         cfgSet(v_gyr["fft_size"],    _dynConfig.gyro.fft_size);
 
-        cfgSetArray(v_gyr["rms_thresh"],      _dynConfig.gyro.rms_thresh);
-        cfgSetArray(v_gyr["kurt_ng_thresh"],  _dynConfig.gyro.kurt_ng_thresh);
-        cfgSetArray(v_gyr["crest_ng_thresh"], _dynConfig.gyro.crest_ng_thresh);
-        cfgSetArray(v_gyr["skew_ng_thresh"],  _dynConfig.gyro.skew_ng_thresh);
+        T2_20_Cfg_SetArray(v_gyr["rms_thresh"],      _dynConfig.gyro.rms_thresh);
+        T2_20_Cfg_SetArray(v_gyr["kurt_ng_thresh"],  _dynConfig.gyro.kurt_ng_thresh);
+        T2_20_Cfg_SetArray(v_gyr["crest_ng_thresh"], _dynConfig.gyro.crest_ng_thresh);
+        T2_20_Cfg_SetArray(v_gyr["skew_ng_thresh"],  _dynConfig.gyro.skew_ng_thresh);
 
         JsonArrayConst v_bands = v_gyr["bands"];
         if (!v_bands.isNull()) {
@@ -689,8 +689,8 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
             _dynConfig.gyro.active_band_count = i;
         }
 
-        cfgSetArray(v_gyr["offset"], _dynConfig.gyro.offset);
-        cfgSetArray(v_gyr["gain"],   _dynConfig.gyro.gain);
+        T2_20_Cfg_SetArray(v_gyr["offset"], _dynConfig.gyro.offset);
+        T2_20_Cfg_SetArray(v_gyr["gain"],   _dynConfig.gyro.gain);
         cfgSet(v_gyr["peak_amp_min"],      _dynConfig.gyro.peak_amp_min);
         cfgSet(v_gyr["peak_freq_gap_min"], _dynConfig.gyro.peak_freq_gap_min);
 
@@ -712,10 +712,10 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
         }
         _dynConfig.audio.mel_bands = v_melBands;
 
-        cfgSetArray(v_aud["rms_thresh"],      _dynConfig.audio.rms_thresh);
-        cfgSetArray(v_aud["kurt_ng_thresh"],  _dynConfig.audio.kurt_ng_thresh);
-        cfgSetArray(v_aud["crest_ng_thresh"], _dynConfig.audio.crest_ng_thresh);
-        cfgSetArray(v_aud["skew_ng_thresh"],  _dynConfig.audio.skew_ng_thresh);
+        T2_20_Cfg_SetArray(v_aud["rms_thresh"],      _dynConfig.audio.rms_thresh);
+        T2_20_Cfg_SetArray(v_aud["kurt_ng_thresh"],  _dynConfig.audio.kurt_ng_thresh);
+        T2_20_Cfg_SetArray(v_aud["crest_ng_thresh"], _dynConfig.audio.crest_ng_thresh);
+        T2_20_Cfg_SetArray(v_aud["skew_ng_thresh"],  _dynConfig.audio.skew_ng_thresh);
 
         JsonArrayConst v_bands = v_aud["bands"];
         if (!v_bands.isNull()) {
@@ -774,7 +774,7 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
         cfgSet(v_aud["gain_max"],      _dynConfig.audio.gain_max);
         cfgSet(v_aud["gain_min"],      _dynConfig.audio.gain_min);
         cfgSet(v_aud["norm_safe"],     _dynConfig.audio.norm_safe);
-        cfgSetArray(v_aud["gain_ch"],  _dynConfig.audio.gain_ch);
+        T2_20_Cfg_SetArray(v_aud["gain_ch"],  _dynConfig.audio.gain_ch);
 
         JsonArrayConst v_eq = v_aud["eq_coeffs"];
         if (!v_eq.isNull()) {
@@ -824,7 +824,7 @@ void CL_T2_ConfigManager::_applyJson(const JsonDocument& p_doc) {
     }
 }
 
-// 함수설명: LittleFS 파일시스템에서 JSON 설정 파일을 읽어와 동적 설정 구조체에 반영합니다. (반환값: 성공 여부)
+// LittleFS 파일시스템에서 JSON 설정 파일을 읽어와 동적 설정 구조체에 반영합니다. (반환값: 성공 여부)
 bool CL_T2_ConfigManager::load() {
     xSemaphoreTake(_lock, portMAX_DELAY);
 
@@ -859,7 +859,7 @@ bool CL_T2_ConfigManager::load() {
     return true;
 }
 
-// 함수설명: 현재 동적 설정 구조체의 멤버 값들을 JSON 문서로 직렬화하여 LittleFS 설정 파일에 저장합니다. (반환값: 성공 여부)
+// 현재 동적 설정 구조체의 멤버 값들을 JSON 문서로 직렬화하여 LittleFS 설정 파일에 저장합니다. (반환값: 성공 여부)
 // ============================================================================
 // [수정/추가] 누락된 ntp, decision, wifi 딜레이 설정 반영 및 eq_coeffs 배열 잘림 현상 수정
 // ============================================================================
@@ -951,13 +951,13 @@ bool CL_T2_ConfigManager::save() {
     v_acc["wake_dur"]       = _dynConfig.accel.wake_dur;
 
     JsonArray v_rmsThV = v_acc["rms_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_rmsThV, _dynConfig.accel.rms_thresh[a]);
+    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_rmsThV, _dynConfig.accel.rms_thresh[a]);
     JsonArray v_kurtThV = v_acc["kurt_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_kurtThV, _dynConfig.accel.kurt_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_kurtThV, _dynConfig.accel.kurt_ng_thresh[a]);
     JsonArray v_crestThV = v_acc["crest_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_crestThV, _dynConfig.accel.crest_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_crestThV, _dynConfig.accel.crest_ng_thresh[a]);
     JsonArray v_skewThV = v_acc["skew_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_skewThV, _dynConfig.accel.skew_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_skewThV, _dynConfig.accel.skew_ng_thresh[a]);
 
     JsonArray v_vbands = v_acc["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.accel.active_band_count; i++) {
@@ -967,13 +967,13 @@ bool CL_T2_ConfigManager::save() {
         v_b["end"]   = _dynConfig.accel.band_end[i];
 
         JsonArray v_thArr = v_b["thresh"].to<JsonArray>();
-        for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_thArr, _dynConfig.accel.band_thresh[a][i]);
+        for(int a=0; a<T2_Def::Accel::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_thArr, _dynConfig.accel.band_thresh[a][i]);
     }
 
     JsonArray v_vcoff = v_acc["offset"].to<JsonArray>();
-    for(uint8_t i=0; i<T2_Def::Accel::Sensor::AXIS_MAX; i++) cfgAddFloatExact(v_vcoff, _dynConfig.accel.offset[i]);
+    for(uint8_t i=0; i<T2_Def::Accel::Sensor::AXIS_MAX; i++) T2_20_Cfg_AddFloatExact(v_vcoff, _dynConfig.accel.offset[i]);
     JsonArray v_vcgain = v_acc["gain"].to<JsonArray>();
-    for(uint8_t i=0; i<T2_Def::Accel::Sensor::AXIS_MAX; i++) cfgAddFloatExact(v_vcgain, _dynConfig.accel.gain[i]);
+    for(uint8_t i=0; i<T2_Def::Accel::Sensor::AXIS_MAX; i++) T2_20_Cfg_AddFloatExact(v_vcgain, _dynConfig.accel.gain[i]);
 
     v_acc["peak_amp_min"]      = _dynConfig.accel.peak_amp_min;
     v_acc["peak_freq_gap_min"] = _dynConfig.accel.peak_freq_gap_min;
@@ -993,13 +993,13 @@ bool CL_T2_ConfigManager::save() {
     v_gyr["fft_size"]    = _dynConfig.gyro.fft_size;
 
     JsonArray v_rmsThG = v_gyr["rms_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_rmsThG, _dynConfig.gyro.rms_thresh[a]);
+    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_rmsThG, _dynConfig.gyro.rms_thresh[a]);
     JsonArray v_kurtThG = v_gyr["kurt_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_kurtThG, _dynConfig.gyro.kurt_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_kurtThG, _dynConfig.gyro.kurt_ng_thresh[a]);
     JsonArray v_crestThG = v_gyr["crest_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_crestThG, _dynConfig.gyro.crest_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_crestThG, _dynConfig.gyro.crest_ng_thresh[a]);
     JsonArray v_skewThG = v_gyr["skew_ng_thresh"].to<JsonArray>();
-    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_skewThG, _dynConfig.gyro.skew_ng_thresh[a]);
+    for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_skewThG, _dynConfig.gyro.skew_ng_thresh[a]);
 
     JsonArray v_gbands = v_gyr["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.gyro.active_band_count; i++) {
@@ -1009,13 +1009,13 @@ bool CL_T2_ConfigManager::save() {
         v_b["end"]   = _dynConfig.gyro.band_end[i];
 
         JsonArray v_thArr = v_b["thresh"].to<JsonArray>();
-        for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) cfgAddFloatExact(v_thArr, _dynConfig.gyro.band_thresh[a][i]);
+        for(int a=0; a<T2_Def::Gyro::Sensor::AXIS_MAX; a++) T2_20_Cfg_AddFloatExact(v_thArr, _dynConfig.gyro.band_thresh[a][i]);
     }
 
     JsonArray v_gcoff = v_gyr["offset"].to<JsonArray>();
-    for(uint8_t i=0; i<T2_Def::Gyro::Sensor::AXIS_MAX; i++) cfgAddFloatExact(v_gcoff, _dynConfig.gyro.offset[i]);
+    for(uint8_t i=0; i<T2_Def::Gyro::Sensor::AXIS_MAX; i++) T2_20_Cfg_AddFloatExact(v_gcoff, _dynConfig.gyro.offset[i]);
     JsonArray v_gcgain = v_gyr["gain"].to<JsonArray>();
-    for(uint8_t i=0; i<T2_Def::Gyro::Sensor::AXIS_MAX; i++) cfgAddFloatExact(v_gcgain, _dynConfig.gyro.gain[i]);
+    for(uint8_t i=0; i<T2_Def::Gyro::Sensor::AXIS_MAX; i++) T2_20_Cfg_AddFloatExact(v_gcgain, _dynConfig.gyro.gain[i]);
 
     v_gyr["peak_amp_min"]      = _dynConfig.gyro.peak_amp_min;
     v_gyr["peak_freq_gap_min"] = _dynConfig.gyro.peak_freq_gap_min;
@@ -1031,13 +1031,13 @@ bool CL_T2_ConfigManager::save() {
     v_aud["mel_bands"]    = _dynConfig.audio.mel_bands;
 
     JsonArray v_rmsThA = v_aud["rms_thresh"].to<JsonArray>();
-    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) cfgAddFloatExact(v_rmsThA, _dynConfig.audio.rms_thresh[ch]);
+    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) T2_20_Cfg_AddFloatExact(v_rmsThA, _dynConfig.audio.rms_thresh[ch]);
     JsonArray v_kurtThA = v_aud["kurt_ng_thresh"].to<JsonArray>();
-    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) cfgAddFloatExact(v_kurtThA, _dynConfig.audio.kurt_ng_thresh[ch]);
+    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) T2_20_Cfg_AddFloatExact(v_kurtThA, _dynConfig.audio.kurt_ng_thresh[ch]);
     JsonArray v_crestThA = v_aud["crest_ng_thresh"].to<JsonArray>();
-    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) cfgAddFloatExact(v_crestThA, _dynConfig.audio.crest_ng_thresh[ch]);
+    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) T2_20_Cfg_AddFloatExact(v_crestThA, _dynConfig.audio.crest_ng_thresh[ch]);
     JsonArray v_skewThA = v_aud["skew_ng_thresh"].to<JsonArray>();
-    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) cfgAddFloatExact(v_skewThA, _dynConfig.audio.skew_ng_thresh[ch]);
+    for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) T2_20_Cfg_AddFloatExact(v_skewThA, _dynConfig.audio.skew_ng_thresh[ch]);
 
     JsonArray v_abands = v_aud["bands"].to<JsonArray>();
     for (uint8_t i = 0; i < _dynConfig.audio.active_band_count; i++) {
@@ -1047,7 +1047,7 @@ bool CL_T2_ConfigManager::save() {
         v_b["end"]   = _dynConfig.audio.band_end[i];
 
         JsonArray v_thArr = v_b["thresh"].to<JsonArray>();
-        for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) cfgAddFloatExact(v_thArr, _dynConfig.audio.band_thresh[ch][i]);
+        for(int ch=0; ch<T2_Def::Audio::Sensor::CHANNELS_MAX; ch++) T2_20_Cfg_AddFloatExact(v_thArr, _dynConfig.audio.band_thresh[ch][i]);
     }
 
     JsonObject v_noise = v_aud["noise"].to<JsonObject>();
@@ -1119,7 +1119,7 @@ bool CL_T2_ConfigManager::save() {
     return true;
 }
 
-// 함수설명: 설정 구성을 초기 기본값 상태로 되돌리고 플래시 파일에 즉시 저장합니다.
+// 설정 구성을 초기 기본값 상태로 되돌리고 플래시 파일에 즉시 저장합니다.
 void CL_T2_ConfigManager::resetToDefault() {
     xSemaphoreTake(_lock, portMAX_DELAY);
     _loadDefaults();
@@ -1127,7 +1127,7 @@ void CL_T2_ConfigManager::resetToDefault() {
     save();
 }
 
-// 함수설명: 현재 활성화된 동적 설정 구조체 데이터의 스냅샷 복사본을 반환합니다. (반환값: 동적 설정 구조체 복사본)
+// 현재 활성화된 동적 설정 구조체 데이터의 스냅샷 복사본을 반환합니다. (반환값: 동적 설정 구조체 복사본)
 T2_Type::ST_DynamicConfig_t CL_T2_ConfigManager::getConfig() {
     xSemaphoreTake(_lock, portMAX_DELAY);
     T2_Type::ST_DynamicConfig_t v__dynConfig_snap = _dynConfig;
@@ -1135,7 +1135,7 @@ T2_Type::ST_DynamicConfig_t CL_T2_ConfigManager::getConfig() {
     return v__dynConfig_snap;
 }
 
-// 함수설명: 동적 설정 전체를 새로운 내용으로 교체한 후 플래시에 저장합니다. (p_dynConfig_new: 교체할 설정 구조체, 반환값: 저장 성공 여부)
+// 동적 설정 전체를 새로운 내용으로 교체한 후 플래시에 저장합니다. (p_dynConfig_new: 교체할 설정 구조체, 반환값: 저장 성공 여부)
 bool CL_T2_ConfigManager::updateConfig(const T2_Type::ST_DynamicConfig_t& p_dynConfig_new) {
     xSemaphoreTake(_lock, portMAX_DELAY);
     _dynConfig = p_dynConfig_new;
@@ -1143,7 +1143,7 @@ bool CL_T2_ConfigManager::updateConfig(const T2_Type::ST_DynamicConfig_t& p_dynC
     return save();
 }
 
-// 함수설명: 동적 설정을 새로운 내용으로 메모리 상에만 갱신하고 더티 플래그를 설정하여 지연 저장을 유도합니다. (p_dynConfig_new: 갱신할 설정 구조체, 반환값: 성공 여부)
+// 동적 설정을 새로운 내용으로 메모리 상에만 갱신하고 더티 플래그를 설정하여 지연 저장을 유도합니다. (p_dynConfig_new: 갱신할 설정 구조체, 반환값: 성공 여부)
 bool CL_T2_ConfigManager::updateConfigLazy(const T2_Type::ST_DynamicConfig_t& p_dynConfig_new) {
     xSemaphoreTake(_lock, portMAX_DELAY);
     _dynConfig = p_dynConfig_new;
@@ -1157,7 +1157,7 @@ bool CL_T2_ConfigManager::updateConfigLazy(const T2_Type::ST_DynamicConfig_t& p_
     return true;
 }
 
-// 함수설명: JSON 문자열을 수신하여 설정을 갱신하고 더티 플래그를 설정하여 지연 쓰기가 실행되도록 합니다. (p_jsonString: 수신된 JSON 설정 문자열, 반환값: 성공 여부)
+// JSON 문자열을 수신하여 설정을 갱신하고 더티 플래그를 설정하여 지연 쓰기가 실행되도록 합니다. (p_jsonString: 수신된 JSON 설정 문자열, 반환값: 성공 여부)
 bool CL_T2_ConfigManager::updateFromJson(const char* p_jsonString) {
     xSemaphoreTake(_lock, portMAX_DELAY);
     JsonDocument v_doc;
@@ -1174,7 +1174,7 @@ bool CL_T2_ConfigManager::updateFromJson(const char* p_jsonString) {
     return true;
 }
 
-// 함수설명: 더티 플래그가 설정된 지연 쓰기 대기 상태에서 일정 시간이 경과하면 플래시에 최종 저장합니다.
+// 더티 플래그가 설정된 지연 쓰기 대기 상태에서 일정 시간이 경과하면 플래시에 최종 저장합니다.
 void CL_T2_ConfigManager::checkLazyWrite() {
     if (!_isDirty || _isTuningActive) return;
     uint32_t v_now = (uint32_t)millis();
@@ -1184,7 +1184,7 @@ void CL_T2_ConfigManager::checkLazyWrite() {
     }
 }
 
-// 함수설명: 튜닝 모드 진입 시 임시 JSON 문자열을 통해 메모리 설정을 미리보기 적용합니다. (p_jsonString: 임시 미리보기 설정 JSON 문자열, 반환값: 성공 여부)
+// 튜닝 모드 진입 시 임시 JSON 문자열을 통해 메모리 설정을 미리보기 적용합니다. (p_jsonString: 임시 미리보기 설정 JSON 문자열, 반환값: 성공 여부)
 bool CL_T2_ConfigManager::updatePreview(const char* p_jsonString) {
     xSemaphoreTake(_lock, portMAX_DELAY);
     JsonDocument v_doc;
@@ -1199,13 +1199,13 @@ bool CL_T2_ConfigManager::updatePreview(const char* p_jsonString) {
     return true;
 }
 
-// 함수설명: 미리보기 적용된 튜닝 설정을 최종 확정하여 플래시에 저장합니다. (반환값: 저장 성공 여부)
+// 미리보기 적용된 튜닝 설정을 최종 확정하여 플래시에 저장합니다. (반환값: 저장 성공 여부)
 bool CL_T2_ConfigManager::commitSave() {
     _isTuningActive = false;
     return save();
 }
 
-// 함수설명: 튜닝 미리보기를 취소하고 원래 플래시에 저장되어 있던 설정값을 다시 복원합니다. (반환값: 복원 성공 여부)
+// 튜닝 미리보기를 취소하고 원래 플래시에 저장되어 있던 설정값을 다시 복원합니다. (반환값: 복원 성공 여부)
 bool CL_T2_ConfigManager::revertCancel() {
     _isTuningActive = false;
     bool res = load();
@@ -1217,7 +1217,7 @@ bool CL_T2_ConfigManager::revertCancel() {
     return res;
 }
 
-// 함수설명: 현재 주요 동적 설정의 핵심 필드들만 수집하여 축소된 JSON 형태로 버퍼에 직렬화 출력합니다. (p_outBuf: 출력할 문자 버퍼, p_maxLen: 최대 크기 제한)
+// 현재 주요 동적 설정의 핵심 필드들만 수집하여 축소된 JSON 형태로 버퍼에 직렬화 출력합니다. (p_outBuf: 출력할 문자 버퍼, p_maxLen: 최대 크기 제한)
 void CL_T2_ConfigManager::serializeToBuffer(char* p_outBuf, size_t p_maxLen) {
     xSemaphoreTake(_lock, portMAX_DELAY);
     JsonDocument v_doc;
