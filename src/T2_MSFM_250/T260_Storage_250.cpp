@@ -133,21 +133,24 @@ bool CL_T2_StorageManager::init() {
     return true;
 }
 
+// 프리트리거 세션 열기
 bool CL_T2_StorageManager::openSession(const char* p_prefix, uint64_t p_triggerTimestamp, const T2_Type::ST_TriggerReason_t& p_reason, const char* p_overrideDir) {
     xSemaphoreTakeRecursive(_lock, portMAX_DELAY);
     if (_sessionOpen) { xSemaphoreGiveRecursive(_lock); return true; }
 
+	// 트리거 정보 기록
     _sessionStartUs = p_triggerTimestamp;
     _triggerReason = p_reason;
 
+	// 프리픽스 설정
     strncpy(_currentPrefix, p_prefix, sizeof(_currentPrefix) - 1);
 
-    // 파일 경로 개별 수립
-    _buildDailyPath(_audBinPath, sizeof(_audBinPath), "aud.bin");
-    _buildDailyPath(_vibBinPath, sizeof(_vibBinPath), "vib.bin");
-    _buildDailyPath(_wavPath, sizeof(_wavPath), "wav");
-    _buildDailyPath(_accPath, sizeof(_accPath), "acc");
-    _buildDailyPath(_gyrPath, sizeof(_gyrPath), "gyr");
+    // 파일 경로 설정
+    _buildDailyPath_v1(_audBinPath, sizeof(_audBinPath), "aud.bin");
+    _buildDailyPath_v1(_vibBinPath, sizeof(_vibBinPath), "vib.bin");
+    _buildDailyPath_v1(_wavPath, sizeof(_wavPath), "wav");
+    _buildDailyPath_v1(_accPath, sizeof(_accPath), "acc");
+    _buildDailyPath_v1(_gyrPath, sizeof(_gyrPath), "gyr");
 
     // 오디오 바이너리 오픈 및 헤더 기록
     _audBinFile = SD_MMC.open(_audBinPath, FILE_WRITE);
@@ -216,6 +219,7 @@ bool CL_T2_StorageManager::openSession(const char* p_prefix, const char* p_overr
     uint64_t dummyT0 = esp_timer_get_time();
     return openSession(p_prefix, dummyT0, defaultReason, p_overrideDir);
 }
+
 
 void CL_T2_StorageManager::closeSession(const char* p_reason) {
     xSemaphoreTakeRecursive(_lock, portMAX_DELAY);
@@ -343,7 +347,183 @@ void CL_T2_StorageManager::_allocateBuffers() {
     }
 }
 
-void CL_T2_StorageManager::_buildDailyPath(char* p_outPath, size_t p_maxLen, const char* p_ext) {
+// 파일 경로 설정
+// {SD_DIR_RAW 또는 SD_DIR_BIN Root} / {YYYY}/{YYYYMM}/ {prefix}_{YYYYMMDD_HHMMSS_MicroSec}.{ext}
+// 생성할 파일의 루트 디렉터리 경로는
+// 	T2_Def::Global::Storage::SD_DIR_RAW_CONST
+// 	T2_Def::Global::Storage::SD_DIR_BIN_CONST
+
+void CL_T2_StorageManager::_buildDailyPath_v2(char* p_outPath, size_t p_maxLen, const char* p_ext) {
+    // 1. 시간 관련 변수 선언 및 현재 시간 가져오기
+    struct tm v_timeinfo;
+    time_t v_now = time(NULL);
+    localtime_r(&v_now, &v_timeinfo);
+
+    // 2. 확장자에 따른 Base 디렉토리 결정
+    bool v_isRaw = (strcmp(p_ext, "bin") != 0);
+    const char* v_DirName_Base = v_isRaw ? T2_Def::Global::Storage::SD_DIR_RAW_CONST : T2_Def::Global::Storage::SD_DIR_BIN_CONST;
+
+    // 3. 시간 정보 추출 (순수 문자열만 저장하도록 슬래시 제거 및 버퍼 크기 확장)
+    char v_strYYYY[8];
+    char v_strYYYYMM[8];
+    char v_strYYYYMMDD[12];
+
+    snprintf(v_strYYYY, sizeof(v_strYYYY), "%04d", v_timeinfo.tm_year + 1900);
+    snprintf(v_strYYYYMM, sizeof(v_strYYYYMM), "%04d%02d", v_timeinfo.tm_year + 1900, v_timeinfo.tm_mon + 1);
+    snprintf(v_strYYYYMMDD, sizeof(v_strYYYYMMDD), "%04d%02d%02d", v_timeinfo.tm_year + 1900, v_timeinfo.tm_mon + 1, v_timeinfo.tm_mday);
+
+    // 4. 폴더 생성 (String 결합 시 슬래시를 명확하게 포함)
+    // 년도 폴더 생성: Base/YYYY
+    String v_pathYYYY = String(v_DirName_Base) + "/" + v_strYYYY;
+    SD_MMC.mkdir(v_pathYYYY.c_str());
+
+    // 년월 폴더 생성: Base/YYYY/YYYYMM
+    String v_pathYYYYMM = v_pathYYYY + "/" + v_strYYYYMM;
+    SD_MMC.mkdir(v_pathYYYYMM.c_str());
+
+
+    bool v_isCreateDir_day = true;
+
+    if (v_isCreateDir_day) {
+        // 년월일 폴더 생성: Base/YYYY/YYYYMM/YYYYMMDD
+        String v_pathYYYYMMDD = v_pathYYYYMM + "/" + v_strYYYYMMDD;
+        SD_MMC.mkdir(v_pathYYYYMMDD.c_str());
+
+        // 최종 파일 경로 생성 (일별 폴더 포함)
+        // 형식: Base/YYYY/YYYYMM/YYYYMMDD/Prefix_시간_순번.ext
+        snprintf(p_outPath, p_maxLen,
+                "%s/%s/%s/%s/%s_%04d%02d%02d_%02d%02d%02d_%02d.%s",
+                v_DirName_Base,
+                v_strYYYY,
+                v_strYYYYMM,
+                v_strYYYYMMDD,
+                _currentPrefix,
+                v_timeinfo.tm_year + 1900,
+                v_timeinfo.tm_mon + 1,
+                v_timeinfo.tm_mday,
+                v_timeinfo.tm_hour,
+                v_timeinfo.tm_min,
+                v_timeinfo.tm_sec,
+                _rotationSubSeq,
+                p_ext
+        );
+    } else {
+        // 최종 파일 경로 생성 (일별 폴더 미포함 - 년월 폴더 바로 아래 생성)
+        // 형식: Base/YYYY/YYYYMM/Prefix_시간_순번.ext
+        snprintf(p_outPath, p_maxLen,
+                "%s/%s/%s/%s_%04d%02d%02d_%02d%02d%02d_%02d.%s",
+                v_DirName_Base,
+                v_strYYYY,
+                v_strYYYYMM,
+                _currentPrefix,
+                v_timeinfo.tm_year + 1900,
+                v_timeinfo.tm_mon + 1,
+                v_timeinfo.tm_mday,
+                v_timeinfo.tm_hour,
+                v_timeinfo.tm_min,
+                v_timeinfo.tm_sec,
+                _rotationSubSeq,
+                p_ext
+        );
+    }
+}
+/*
+void CL_T2_StorageManager::_buildDailyPath_v2(char* p_outPath, size_t p_maxLen, const char* p_ext) {
+
+	bool v_isCreateDir_day = false;
+
+	// 시간 관련 변수 선언
+	struct tm v_timeinfo;
+	// 현재 시간 구조체 생성
+    time_t     v_now = time(NULL);
+
+	// 시간 정보를 구조체에 저장
+    localtime_r(&v_now, &v_timeinfo);
+
+
+    bool v_isRaw = (strcmp(p_ext, "bin") != 0);
+
+	const char* v_DirName_Base = v_isRaw ? T2_Def::Global::Storage::SD_DIR_RAW_CONST : T2_Def::Global::Storage::SD_DIR_BIN_CONST;
+
+    // 년도 폴더 생성
+	char v_dirName_YYYY[8];
+    snprintf(v_dirName_YYYY, sizeof(v_dirName_YYYY),
+		"/%04d",
+		v_timeinfo.tm_year + 1900
+	);
+    SD_MMC.mkdir((String(v_DirName_Base) + v_dirName_YYYY).c_str());
+
+    // 년월 폴더 생성
+    char v_dirName_YYYYMM[8];
+    snprintf(v_dirName_YYYYMM, sizeof(v_dirName_YYYYMM),
+		"/%04d%02d",
+		v_timeinfo.tm_year + 1900,
+		v_timeinfo.tm_mon + 1
+	);
+    SD_MMC.mkdir((String(v_DirName_Base) + v_dirName_YYYY + v_dirName_YYYYMM).c_str());
+
+	if (v_isCreateDir_day == true){
+		// 년월일 폴더 생성
+		char v_dirName_YYYYMMDD[16];
+		snprintf(v_dirName_YYYYMMDD, sizeof(v_dirName_YYYYMMDD),
+			"/%04d%02d%02d",
+			v_timeinfo.tm_year + 1900,
+			v_timeinfo.tm_mon + 1,
+			v_timeinfo.tm_mday
+		);
+		SD_MMC.mkdir((String(v_DirName_Base) + v_dirName_YYYY + v_dirName_YYYYMM + v_dirName_YYYYMMDD).c_str());
+
+		// 파일 경로 생성
+		snprintf(p_outPath, p_maxLen,
+				"%s/%s/%s/%s/%s_%04d%02d%02d_%02d%02d%02d_%02d.%s",
+				v_DirName_Base,
+				v_dirName_YYYY,
+				v_dirName_YYYYMM,
+				v_dirName_YYYYMMDD,
+
+				_currentPrefix,
+
+				v_timeinfo.tm_year + 1900,
+				v_timeinfo.tm_mon + 1,
+				v_timeinfo.tm_mday,
+
+				v_timeinfo.tm_hour,
+				v_timeinfo.tm_min,
+				v_timeinfo.tm_sec,
+
+				_rotationSubSeq,
+
+				p_ext
+			);
+	} else {
+		// 파일 경로 생성
+		snprintf(p_outPath, p_maxLen,
+				"%s/%s/%s/%s_%04d%02d%02d_%02d%02d%02d_%02d.%s",
+				v_DirName_Base,
+				v_dirName_YYYY,
+				v_dirName_YYYYMM,
+
+				_currentPrefix,
+
+				v_timeinfo.tm_year + 1900,
+				v_timeinfo.tm_mon + 1,
+				v_timeinfo.tm_mday,
+
+				v_timeinfo.tm_hour,
+				v_timeinfo.tm_min,
+				v_timeinfo.tm_sec,
+
+				_rotationSubSeq,
+
+				p_ext
+			);
+	}
+
+
+}
+*/
+
+void CL_T2_StorageManager::_buildDailyPath_v1(char* p_outPath, size_t p_maxLen, const char* p_ext) {
     struct tm v_timeinfo;
     time_t v_now = time(NULL);
     localtime_r(&v_now, &v_timeinfo);

@@ -22,7 +22,8 @@ CL_T2_FeatureExtractor::CL_T2_FeatureExtractor()
       _fftWorkIMU(nullptr), _powerIMU(nullptr),
       _cepsIfftWork(nullptr), _mfccHistory(nullptr), _deltaHistory(nullptr),
       _learnedFrames(0), _isLearning(false), _isInitialized(false),
-      _activeMelBands(T2_Def::Audio::FeatureLimit::MEL_BANDS_DEF) {
+      _activeMelBand_size(T2_Def::Audio::FeatureLimit::MEL_BANDS_DEF) {
+
     memset(_historyCount, 0, sizeof(_historyCount));
     memset(_historyHead, 0, sizeof(_historyHead));
     _prevRms[0] = 0.0f; _prevRms[1] = 0.0f;
@@ -46,10 +47,10 @@ CL_T2_FeatureExtractor::~CL_T2_FeatureExtractor() {
 bool CL_T2_FeatureExtractor::init(const T2_Type::ST_Audio_Config_t& audioCfg) {
 
     // 런타임 활성 Mel 대역 수 설정 (경계값 검증)
-    _activeMelBands = audioCfg.mel_bands;
+    _activeMelBand_size = audioCfg.melband_size;
     // 설정값이 유효한 범위 내에 있는지 확인하고, 범위를 벗어나는 경우 기본값 사용
-    if (_activeMelBands == 0 || _activeMelBands > MEL_BANDS_MAX) {
-        _activeMelBands = T2_Def::Audio::FeatureLimit::MEL_BANDS_DEF;
+    if (_activeMelBand_size == 0 || _activeMelBand_size > MEL_BANDS_MAX) {
+        _activeMelBand_size = T2_Def::Audio::FeatureLimit::MEL_BANDS_DEF;
     }
 
     // 오디오용 버퍼 할당
@@ -654,28 +655,28 @@ void CL_T2_FeatureExtractor::_computeStats(const float* p_data, uint32_t p_len, 
     }
 
     // RMS 계산
-    p_rms = SMEA_SAN_FLOAT(sqrtf(v_sqSum / p_len));
+    p_rms = G_T2_10_Def_FPU_SAN_FLOAT(sqrtf(v_sqSum / p_len));
     // 분산 계산
     float v_var = (float)(M2 / p_len);
     // 표준편차 계산
-    p_std = SMEA_SAN_FLOAT(sqrtf(v_var));
+    p_std = G_T2_10_Def_FPU_SAN_FLOAT(sqrtf(v_var));
 
     // 편차 제곱근의 평균을 위한 분모 계산
     float v_denom = fmaxf(p_std * p_std, T2_Def::Global::System::MATH_EPSILON_12_CONST);
     // 왜도 계산
     p_skew = (p_std > T2_Def::Global::System::MATH_EPSILON_12_CONST) ? (float)(M3 / p_len) / (v_denom * p_std) : 0.0f;
     // 왜도 포화 처리
-    p_skew = SMEA_SAN_FLOAT(p_skew);
+    p_skew = G_T2_10_Def_FPU_SAN_FLOAT(p_skew);
 
     // 첨도(Kurtosis) 계산
-    p_kurt = SMEA_SAN_FLOAT((float)(M4 / p_len) / (v_denom * v_denom));
+    p_kurt = G_T2_10_Def_FPU_SAN_FLOAT((float)(M4 / p_len) / (v_denom * v_denom));
     // 첨도 포화 처리
-    p_kurt = SMEA_SAN_FLOAT(p_kurt);
+    p_kurt = G_T2_10_Def_FPU_SAN_FLOAT(p_kurt);
 
     // Crest Factor 계산
-    p_crest = SMEA_SAN_FLOAT(v_maxAbs / fmaxf(p_rms, T2_Def::Global::System::MATH_EPSILON_12_CONST));
+    p_crest = G_T2_10_Def_FPU_SAN_FLOAT(v_maxAbs / fmaxf(p_rms, T2_Def::Global::System::MATH_EPSILON_12_CONST));
     // Crest Factor 포화 처리
-    p_crest = SMEA_SAN_FLOAT(p_crest);
+    p_crest = G_T2_10_Def_FPU_SAN_FLOAT(p_crest);
 }
 
 // 스펙트럼 중심(Centroid) 계산
@@ -686,7 +687,7 @@ float CL_T2_FeatureExtractor::_computeSpectralCentroid(const float* p_power, uin
         v_num += freq * p_power[i];
         v_den += p_power[i];
     }
-    return SMEA_SAN_FLOAT(v_num / fmaxf(v_den, T2_Def::Global::System::MATH_EPSILON_CONST));
+    return G_T2_10_Def_FPU_SAN_FLOAT(v_num / fmaxf(v_den, T2_Def::Global::System::MATH_EPSILON_CONST));
 }
 
 // 스펙트럼 피크 추출 (Peak Picking)
@@ -792,10 +793,10 @@ void CL_T2_FeatureExtractor::_computeMfcc(const float* p_power, uint32_t p_bins,
     dspm_mult_f32(p_power, melBank, v_melEnergies, 1, binPadded, MEL_PADDED);
 
     // 오디오/IMU 공용 활성 멜 밴드 수
-    const uint8_t activeBands = isAudio ? _activeMelBands : MEL_BANDS_MAX;
+    const uint8_t activeBands = isAudio ? _activeMelBand_size : MEL_BANDS_MAX;
     // 로그 에너지 계산
     for (int i = 0; i < activeBands; i++) {
-        float v_energySanitized = SMEA_SAN_FLOAT(v_melEnergies[i]);
+        float v_energySanitized = G_T2_10_Def_FPU_SAN_FLOAT(v_melEnergies[i]);
         v_melEnergies[i] = log10f(fmaxf(v_energySanitized, T2_Def::Global::System::MATH_EPSILON_12_CONST));
     }
     // 나머지 공간 초기화
@@ -872,7 +873,7 @@ void CL_T2_FeatureExtractor::reloadAudioMelFilter(float sampleRate) {
     // Mel 뱅크 초기화
     memset(_melBankFlat, 0, BINS_PADDED * MEL_PADDED * sizeof(float));
 
-    MelFilterbankGenerator::generateAudioMelFilterbank(_melBankFlat, sampleRate, _activeMelBands, BINS_MAX, MEL_PADDED, MEL_BANDS_MAX);
+    MelFilterbankGenerator::generateAudioMelFilterbank(_melBankFlat, sampleRate, _activeMelBand_size, BINS_MAX, MEL_PADDED, MEL_BANDS_MAX);
 
     // DCT Matrix는 주파수 축과 무관하므로 재생성 불필요
     ESP_LOGI(TAG, "Audio Mel Filterbank reloaded (SR: %.0f Hz, Nyquist: %.0f Hz, Bins: %d)",

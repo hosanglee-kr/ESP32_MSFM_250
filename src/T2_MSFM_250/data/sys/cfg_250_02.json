@@ -377,7 +377,7 @@
     "channel_mask": 3,
     "sample_rate": 42000,
     "fft_size": 1024,
-    "mel_bands": 26,
+    "melband_size": 26,
     "rms_thresh": [
       0.05,
       0.05

@@ -50,6 +50,7 @@ private:
     char _wavPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];			// 오디오 원시 파형 파일(.wav) 경로
     char _accPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];			// 가속도 원시 파형 파일(.acc) 경로
     char _gyrPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];			// 자이로 원시 파형 파일(.gyr) 경로
+
     char _currentPrefix[T2_Def::Global::StorageLimit::PREFIX_LEN_MAX];	// 현재 프리픽스
 
 	uint32_t _sessionStartTick;							// 세션 시작 틱
@@ -123,9 +124,11 @@ public:
 
 	// 저장소 초기화
     bool init();
+
     // 세션 열기
     bool openSession(const char* p_prefix, uint64_t p_triggerTimestamp, const T2_Type::ST_TriggerReason_t& p_reason, const char* p_overrideDir = nullptr);
     bool openSession(const char* p_prefix, const char* p_overrideDir = nullptr);
+
 	// 세션 닫기
     void closeSession(const char* p_reason);
 
@@ -166,8 +169,11 @@ public:
 private:
 	// 버퍼 할당
     void _allocateBuffers();
-    // 일별 경로 빌드
-    void _buildDailyPath(char* p_outPath, size_t p_maxLen, const char* p_ext);
+    // 일별 경로 빌드 v2
+    void _buildDailyPath_v2(char* p_outPath, size_t p_maxLen, const char* p_ext);
+	// 일별 경로 빌드 v1
+    void _buildDailyPath_v1(char* p_outPath, size_t p_maxLen, const char* p_ext);
+
     // 바이너리 헤더 쓰기
     void _writeBinHeader(fs::File&, bool);
     // WAV 헤더 쓰기

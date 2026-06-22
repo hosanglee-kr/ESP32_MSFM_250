@@ -23,26 +23,40 @@
 #include "esp_rom_crc.h"
 
 
+// 코드 세그먼트 지정을 위한 매크로
 // 실행 코드를 플래시 ROM에서 직접 페치 (필터 계수 테이블용)
-#define SMEA_FLASH_RODATA __attribute__((section(".rodata")))
+#define G_T2_10_Def_FLASH_ATTR_RODATA  __attribute__((section(".rodata")))
+
 // 핫 버퍼 강제 내부 SRAM 상주 (사전 매핑 테이블 및 핵심 상태 버퍼용)
-#define SMEA_SRAM_ATTR    DRAM_ATTR
+#define G_T2_10_Def_SRAM_ATTR          DRAM_ATTR
+
 // 16바이트 벡터 정렬 강제
-#define SMEA_ALIGN_16     __attribute__((aligned(16)))
+#define G_T2_10_Def_ALIGN_16           __attribute__((aligned(16)))
 
 // esp-dsp 버전 체크용 매크로 (v1.8.2)
-#define ESP_DSP_VERSION_CHECK_VAL 10802
+#define G_T2_10_Def_ESP_DSP_VERSION_CHECK_VAL 10802
 
 // 192바이트 규모의 정적 인덱스 룩업 테이블 (내부 SRAM 상주)
-extern const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] DRAM_ATTR;
+extern const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] G_T2_10_Def_SRAM_ATTR;
 
 
 // FPU NaN/Inf 및 안전 연산 세이프티 매크로
-#define SMEA_IS_NAN(v) (__builtin_isnan(v))
-#define SMEA_IS_INF(v) (__builtin_isinf(v))
-#define SMEA_SAN_FLOAT(v) ((SMEA_IS_NAN(v) || SMEA_IS_INF(v)) ? 0.0f : (v))
-#define SMEA_CLAMP_FLOAT(v, min_v, max_v) (std::clamp(SMEA_SAN_FLOAT(v), (min_v), (max_v)))
-#define SMEA_SAFE_DIV(num, denom, eps) ((fabsf(denom) < (eps)) ? ((num) / (eps)) : ((num) / (denom)))
+
+// FPU NaN 검사
+#define G_T2_10_Def_FPU_IS_NAN(v) (__builtin_isnan(v))
+
+// FPU Inf 검사
+#define G_T2_10_Def_FPU_IS_INF(v) (__builtin_isinf(v))
+
+// FPU NaN/Inf 제거
+#define G_T2_10_Def_FPU_SAN_FLOAT(v) ((G_T2_10_Def_FPU_IS_NAN(v) || G_T2_10_Def_FPU_IS_INF(v)) ? 0.0f : (v))
+
+// FPU NaN/Inf 제거 및 클램핑
+#define G_T2_10_Def_FPU_CLAMP_FLOAT(v, min_v, max_v) (std::clamp(G_T2_10_Def_FPU_SAN_FLOAT(v), (min_v), (max_v)))
+
+// FPU 0 나누기 방어
+#define G_T2_10_Def_FPU_SAFE_DIV(num, denom, eps) ((fabsf(denom) < (eps)) ? ((num) / (eps)) : ((num) / (denom)))
+
 
 namespace T2_Def {
 
@@ -115,8 +129,8 @@ namespace Global {
     }  // namespace Path
 
     namespace NVS {
-        inline constexpr char const*  NAMESPACE_CONST    = "T2_250_sys";                // NVS 파티션 네임스페이스
-        inline constexpr char const*  KEY_FILE_SEQ_CONST = "file_seq";                  // 시퀀스 번호 저장 키
+        inline constexpr char const*  NAMESPACE_CONST      = "T2_250_sys";              // NVS 파티션 네임스페이스
+        inline constexpr char const*  KEY_FILE_SEQ_CONST   = "file_seq";                // 시퀀스 번호 저장 키
     }  // namespace NVS
 
     namespace NetLimit {
@@ -264,7 +278,7 @@ namespace Accel {
         inline constexpr uint16_t HILBERT_GROUP_DELAY = (HILBERT_FIR_TAPS - 1) / 2; // 힐버트 군지연(Group Delay) 15
 
         static_assert(HILBERT_GROUP_DELAY == 15, "Hilbert Filter Group Delay configuration mismatch!");
-        static_assert(ESP_DSP_VERSION_CHECK_VAL == 10802, "esp-dsp version assertion failed!");
+        static_assert(G_T2_10_Def_ESP_DSP_VERSION_CHECK_VAL == 10802, "esp-dsp version assertion failed!");
 
         // 현상: STA_SAMPLES_DEF = 1600/1000 = 1, LTA_SAMPLES_DEF = 1600/100 = 16로 STA가 1샘플에 불과하여 STA/LTA가 무력화됨.
         // 해결방안: 해당 상수를 (샘플레이트 * 시구간_ms) / 1000 형태로 재정의합니다. 동시에 uint32_t에 맞게 반올림 처리합니다.

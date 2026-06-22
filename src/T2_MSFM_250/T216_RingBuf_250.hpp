@@ -29,7 +29,7 @@ public:
             return false;           // 버퍼 꽉 참: 덮어쓰지 않고 실패 처리 (원천 차단)
         }
 
-        
+
         _buffer[v_head] = p_item;
         std::atomic_thread_fence(std::memory_order_release); // 데이터 복사 완료 장벽
         _head.store(v_next_head, std::memory_order_release);
@@ -67,7 +67,7 @@ template <typename T>
 class EspRingBufferWrapper {
 private:
     RingbufHandle_t _handle;
-    size_t _bufferSize;
+    size_t          _bufferSize;
 
 public:
     EspRingBufferWrapper(size_t p_bufferSizeBytes) : _handle(nullptr), _bufferSize(p_bufferSizeBytes) {

@@ -14,7 +14,7 @@
 static const char* TAG = "T240_DSP";
 
 // --- 1/3 Octave band bin index map (32 bands x 3 resolutions x 2 indices = 192 bytes, 내부 SRAM 상주) ---
-const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] DRAM_ATTR = {
+const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] G_T2_10_Def_SRAM_ATTR = {
     // 1024 FFT 예시 (start, end bin)
     2, 2,  3, 3,  4, 4,  5, 5,  6, 6,  7, 8,  9, 10, 11, 13,
     14, 16, 17, 20, 21, 25, 26, 32, 33, 40, 41, 50, 51, 63, 64, 79,
@@ -27,7 +27,7 @@ const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] DRAM_ATTR = {
 };
 
 // --- 31차 힐버트 FIR 필터 계수 정의 (.rodata Flash XIP 상주) ---
-const float g_T2_40_Dsp_HilbertCoeffs_arr[31] SMEA_FLASH_RODATA = {
+const float g_T2_40_Dsp_HilbertCoeffs_arr[31] G_T2_10_Def_FLASH_ATTR_RODATA = {
     -0.0051f, 0.0f, -0.0084f, 0.0f, -0.0145f, 0.0f, -0.0262f, 0.0f,
     -0.0513f, 0.0f, -0.1132f, 0.0f, -0.3183f, 0.0f, 0.0f, 0.0f,
     0.3183f, 0.0f, 0.1132f, 0.0f, 0.0513f, 0.0f, 0.0262f, 0.0f,
@@ -816,7 +816,7 @@ void CL_T2_DspEngine::_applyNoiseGate(float* p_data, uint32_t p_len, float p_gat
 void CL_T2_DspEngine::_removeDC(float* p_data, uint32_t p_len) {
     float v_sum = 0.0f;
     for (uint32_t i = 0; i < p_len; i++) {
-        p_data[i] = SMEA_SAN_FLOAT(p_data[i]);
+        p_data[i] = G_T2_10_Def_FPU_SAN_FLOAT(p_data[i]);
         v_sum += p_data[i];
     }
     float v_mean = v_sum / (float)p_len;

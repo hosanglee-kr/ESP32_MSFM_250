@@ -19,12 +19,16 @@
 #include <bitset>
 #include "T210_Def_250.hpp"
 
+
+//// using namespace T2_Def;
+
 namespace T2_Type {
 
 // ========================================================================
 // [PART 1] 시스템 열거형 (Enum Classes)
 // ========================================================================
 
+// 시스템 상태 열거형
 enum class EM_SystemState_t : uint8_t {
     INIT           = 0,         // 초기화
     READY,                      // 준비
@@ -33,51 +37,65 @@ enum class EM_SystemState_t : uint8_t {
     NOISE_LEARNING,             // 노이즈 학습
     MAINTENANCE,                // 유지보수
     ERROR,                      // 에러
-    CALIBRATING                 // 교정
+    CALIBRATING,                // 교정
+	COUNT						// 시스템 상태 개수
 };
 
+// 운용 모드 열거형
 enum class EM_OpMode_t : uint8_t {
     MANUAL         = 0,         // 수동
     AUTO,                       // 자동
-    SCHEDULE                    // 예약
+    SCHEDULE,                   // 예약
+	COUNT						// 오퍼레이션 모드 개수
 };
 
+// 축 비트마스크 열거형
 enum class EM_AxisMask_t : uint8_t {
     NONE           = 0,         // 없음
     AXIS_X         = 1 << 0,    // 0b001
     AXIS_Y         = 1 << 1,    // 0b010
     AXIS_Z         = 1 << 2,    // 0b100
-    AXIS_ALL       = 0b111      // 전체
+    AXIS_ALL       = 0b111,     // 전체
+	COUNT						// 축 마스크 개수
 };
 
+// 채널 마스크 열거형
 enum class EM_ChannelMask_t : uint8_t {
     NONE           = 0,         // 없음
     CH_LEFT        = 1 << 0,    // 0b01
     CH_RIGHT       = 1 << 1,    // 0b10
-    CH_STEREO      = 0b11       // 전체 스테레오
+    CH_STEREO      = 0b11,      // 전체 스테레오
+	COUNT						// 채널 마스크 개수
 };
 
+// 데이터 페이로드 타입 열거형
 enum class EM_DataPayloadType_t : uint8_t {
     VIB_ONLY       = 1,         // 진동 데이터만
     AUDIO_ONLY     = 2,         // 오디오 데이터만
-    VIB_AUDIO_BOTH = 3          // 진동 + 오디오 데이터 모두
+    VIB_AUDIO_BOTH = 3,         // 진동 + 오디오 데이터 모두
+	COUNT						// 데이터 페이로드 타입 개수
 };
 
+// 상태 비트 열거형
 enum class EM_StatusBit_t : uint8_t {
     NTP_SYNCED     = 0,         // NTP 시간 동기화 여부
     SD_MOUNTED     = 1,         // SD 카드 마운트 여부
     RECORDING_NOW  = 2,         // 녹음 중 여부
-    SENSOR_FAULT   = 3          // 센서 오류 여부
+    SENSOR_FAULT   = 3,         // 센서 오류 여부
+	COUNT						// 상태 비트 개수
 };
 
+// 판정 결과 열거형
 enum class EM_DetectionResult_t : uint8_t {
     PASS           = 0,         // 합격
     RULE_VIB_NG,                // 진동 규칙 위반
     RULE_AUDIO_NG,              // 오디오 규칙 위반
     TEST_NG,                    // 테스트 위반
-    ML_NG                       // ML 규칙 위반
+    ML_NG,                      // ML 규칙 위반
+	COUNT						// 판정 결과 개수
 };
 
+// 시스템 커맨드 열거형
 enum class EM_SystemCommand_t : uint8_t {
     CMD_START          = 0,     // 시작
     CMD_STOP,                   // 중지
@@ -90,9 +108,11 @@ enum class EM_SystemCommand_t : uint8_t {
     CMD_MANUAL_REC_STOP,        // 수동 녹음 중지
     CMD_TUNING_PREVIEW,         // 튜닝 미리보기
     CMD_TUNING_SAVE,            // 튜닝 저장
-    CMD_TUNING_CANCEL           // 튜닝 취소
+    CMD_TUNING_CANCEL,          // 튜닝 취소
+	COUNT						// 시스템 커맨드 개수
 };
 
+// 비동기 세션 커맨드 열거형
 enum class EM_AsyncSessionCmd_t : uint8_t {
     NONE = 0,                   // 없음
     OPEN_AUTO,                  // 자동 개방
@@ -100,42 +120,53 @@ enum class EM_AsyncSessionCmd_t : uint8_t {
     OPEN_CALIB_MAN,             // 교정 수동 개방
     CLOSE_NORMAL,               // 정상 닫힘
     CLOSE_MANUAL,               // 수동 닫힘
-    CLOSE_CALIB_DONE            // 교정 완료 닫힘
+    CLOSE_CALIB_DONE,           // 교정 완료 닫힘
+	COUNT						// 비동기 세션 개수
 };
 
+// 트리거 소스 열거형
 enum class EM_TriggerSource_t : uint8_t {
     NONE           = 0,         // 없음
     HW_WAKE,                    // 하드웨어 웨이크업
     SW_RMS,                     // 소프트웨어 RMS
     SW_BAND,                    // 소프트웨어 주파수 대역
-    MANUAL                      // 수동
+    MANUAL,                     // 수동
+	COUNT						// 트리거 소스 개수
 };
 
+// 스트림 타입 열거형
 enum class EM_StreamType_t : uint8_t {
     TELEMETRY      = 0x01,      // 텔레메트리
     SPECTRUM       = 0x02,      // 스펙트럼
     WAVEFORM       = 0x03,      // 파형
     CALIBRATION    = 0x04,      // 교정
-    SEQUENCE       = 0x05       // 시퀀스
+    SEQUENCE       = 0x05,      // 시퀀스
+	COUNT						// 스트림 타입 개수
 };
 
+// 노이즈 모드 열거형
 enum class EM_NoiseMode_t : uint8_t {
     OFF            = 0,         // 끔
     FIXED,                      // 고정
-    ADAPTIVE                    // 적응형
+    ADAPTIVE,                   // 적응형
+	COUNT						// 노이즈 모드 개수
 };
 
+// 와이파이 모드 열거형
 enum class EM_WiFiMode_t : uint8_t {
     STA_ONLY       = 0,         // STA 모드만
     AP_ONLY,                    // AP 모드만
     AP_STA,                     // AP + STA 모드
-    AUTO_FALLBACK               // 자동 폴백
+    AUTO_FALLBACK,              // 자동 폴백
+	COUNT						// 와이파이 모드 개수
 };
 
+// 윈도우 타입 열거형
 enum class EM_WindowType_t : uint8_t {
     HANN           = 0,         // 해닝 윈도우
     HAMMING,                    // 해밍 윈도우
-    BLACKMAN                    // 블랙맨 윈도우
+    BLACKMAN,                   // 블랙맨 윈도우
+	COUNT						// 윈도우 타입 개수
 };
 
 
@@ -147,6 +178,7 @@ enum class EM_WindowType_t : uint8_t {
 // Tier 1. Global (디바이스 전역 인프라)
 // ------------------------------------------------------------------------
 
+// 와이파이 설정 구조체
 struct ST_Global_WiFi_t {
     EM_WiFiMode_t mode;                                               // Wi-Fi 동작 모드 (STA, AP, AP_STA, AUTO_FALLBACK 등)
     char          ap_ssid[T2_Def::Global::NetLimit::NET_SSID_LEN_MAX]; // 자체 AP 모드 구동 시 사용할 SSID
@@ -157,6 +189,7 @@ struct ST_Global_WiFi_t {
     uint32_t      disconnect_delay_ms;                                // [이슈 9] Wi-Fi 연결 해제 후 재연결 시도 전 대기 시간 (ms)
 };
 
+// MQTT 설정 구조체
 struct ST_Global_Mqtt_t {
     bool     enable;                                                  // MQTT 통신 기능 활성화 여부
     char     broker[T2_Def::Global::NetLimit::NET_BROKER_LEN_MAX];    // MQTT 브로커 서버 도메인 또는 IP 주소
@@ -169,12 +202,14 @@ struct ST_Global_Mqtt_t {
     uint8_t  proto_ver;                                               // MQTT 프로토콜 버전 (예: 4 = v3.1.1)
 };
 
+// NTP 설정 구조체
 struct ST_Global_NTP_t {
     char     ntp_server1[T2_Def::Global::NetLimit::NET_BROKER_LEN_MAX];   // 주 시간 동기화 NTP 서버 주소
     char     ntp_server2[T2_Def::Global::NetLimit::NET_BROKER_LEN_MAX];   // 보조 시간 동기화 NTP 서버 주소
     char     ntp_tz[32];                                                  // 타임존 환경 변수 설정 문자열 (예: KST-9)
 };
 
+// 저장장치 설정 구조체
 struct ST_Global_Storage_t {
     uint32_t  rot_mb;                  // 파일 순환 저장 임계 크기 (단위: MB)
     uint32_t  rot_min;                 // 파일 순환 저장 임계 시간 (단위: 분)
@@ -186,6 +221,7 @@ struct ST_Global_Storage_t {
     bool      enable_raw_audio_saving;  // 오디오 원시 파형(.wav)의 로컬 디스크 파일 영속 저장 스위치
 };
 
+// 시스템 설정 구조체
 struct ST_Global_System_t {
     char          site_id[T2_Def::Global::System::SITE_ID_LEN_MAX];  // 센서 노드가 물리적으로 설치된 공정/라인 등 현장 식별자
     uint8_t       tele_hz;                                           // 상태 보고 및 특징량 데이터의 텔레메트리 송출 속도 주기 (Hz)
@@ -203,6 +239,7 @@ struct ST_Global_Decision_t {
     float   valid_end_sec;       // 판정 종료 유효 시간 초 (기본: VALID_END_SEC_DEF)
 };
 
+// 출력 설정 구조체
 struct ST_Global_Output_t {
     bool     enabled;            // 이벤트 발생 시 외부 출력(LED 점등, GPIO 토글 등) 활성화 여부
     bool     output_sequence;    // 유효한 이벤트 판정 시 진동 파형 시퀀스 데이터를 외부로 송출(Push/Stream)할지 여부
@@ -214,22 +251,22 @@ struct ST_Global_Output_t {
 // ------------------------------------------------------------------------
 
 struct ST_FilterFIR_t {
-    bool     en;
-    float    cutoff;
-    uint16_t taps;
+    bool     en;                    // FIR 필터 활성화 여부
+    float    cutoff;                // FIR 필터 컷오프 주파수
+    uint16_t taps;                  // FIR 필터 탭 수
 };
 
 struct ST_FilterIIR_t {
-    bool  en;
-    float cutoff;
-    float q;
+    bool  en;                       // IIR 필터 활성화 여부
+    float cutoff;                   // IIR 필터 컷오프 주파수
+    float q;                        // IIR 필터 Q값
 };
 
 struct ST_FilterNotch_t {
-    bool  en;
-    float freq;
-    float gain;
-    float q;
+    bool  en;					    // 노이즈 필터 활성화 여부
+    float freq;						// 노이즈 필터 주파수
+    float gain;						// 노이즈 필터 게인
+    float q;						// 노이즈 필터 Q값
 };
 
 struct ST_Dsp_Config_t {
@@ -280,7 +317,7 @@ struct ST_Accel_Config_t {
     float    crest_ng_thresh[T2_Def::Accel::Sensor::AXIS_MAX]; // Crest Factor 비정상 진단 임계값
     float    skew_ng_thresh[T2_Def::Accel::Sensor::AXIS_MAX];  // 비대칭도(Skewness) 비정상 진단 임계값
 
-    uint8_t  active_band_count;    // 유효한 주파수 대역 개수   
+    uint8_t  active_band_count;    // 유효한 주파수 대역 개수
     std::bitset<16> band_en;       // 주파수 대역 활성화 비트맵
     float    band_start[T2_Def::Accel::FeatureLimit::BAND_MAX];  // 주파수 대역 시작주파수 (Hz)
     float    band_end[T2_Def::Accel::FeatureLimit::BAND_MAX];    // 주파수 대역 종료주파수 (Hz)
@@ -392,7 +429,7 @@ struct ST_Audio_Config_t {
     float    gain_ch[T2_Def::Audio::Sensor::CHANNELS_MAX]; // 채널별 게인
     alignas(16) float eq_coeffs[T2_Def::Audio::Sensor::CHANNELS_MAX][T2_Def::Audio::FeatureLimit::FIR_TAPS_MAX]; // EQ 계수
 
-	uint8_t mel_bands;              // 멜 필터 뱅크 개수
+	uint8_t  melband_size;         // 멜 필터 뱅크 개수
 
     uint8_t  active_ceps_count;    // 유효한 MFCC 개수
     uint8_t  active_peak_count;    // 유효한 피크 개수
@@ -411,23 +448,23 @@ struct ST_Audio_Config_t {
 // ------------------------------------------------------------------------
 struct ST_DynamicConfig_t {
     ST_Global_System_t   system;     // 시스템 공통 설정
-    ST_Global_WiFi_t     wifi;     // Wi-Fi 설정
-    ST_Global_Mqtt_t     mqtt;     // MQTT 설정
-	ST_Global_NTP_t		 ntp;      // NTP 설정
-    ST_Global_Storage_t  storage;  // 저장 설정
-    ST_Global_Output_t   output;   // 출력 설정
-    ST_Global_Decision_t decision;  // MLOps 의사결정 파라미터 동적 제어
+    ST_Global_WiFi_t     wifi;       // Wi-Fi 설정
+    ST_Global_Mqtt_t     mqtt;       // MQTT 설정
+	ST_Global_NTP_t		 ntp;        // NTP 설정
+    ST_Global_Storage_t  storage;    // 저장 설정
+    ST_Global_Output_t   output;     // 출력 설정
+    ST_Global_Decision_t decision;   // MLOps 의사결정 파라미터 동적 제어
 
-    ST_Accel_Config_t    accel;     // 가속도 센서 설정
-    ST_Gyro_Config_t     gyro;      // 자이로 센서 설정
-    ST_Audio_Config_t    audio;     // 오디오 센서 설정
+    ST_Accel_Config_t    accel;      // 가속도 센서 설정
+    ST_Gyro_Config_t     gyro;       // 자이로 센서 설정
+    ST_Audio_Config_t    audio;      // 오디오 센서 설정
 
-    uint32_t             trig_hold_ms;  // 트리거 홀드 시간 (ms)
-    bool                 trig_use_sleep;  // 트리거 슬립 사용 여부
-    uint32_t             trig_sleep_sec;  // 트리거 슬립 시간 (초)
+    uint32_t             trig_hold_ms;         // 트리거 홀드 시간 (ms)
+    bool                 trig_use_sleep;       // 트리거 슬립 사용 여부
+    uint32_t             trig_sleep_sec;       // 트리거 슬립 시간 (초)
     bool                 enable_advanced_physics_compensation; // 고급 물리 보정(온도, 속도 적분, 레버암 등) 일괄 제어
-    uint32_t             revision;          // 설정 데이터 Revision
-    uint32_t             config_version;    // 설정 데이터 버전
+    uint32_t             revision;             // 설정 데이터 Revision
+    uint32_t             config_version;       // 설정 데이터 버전
 };
 
 // ------------------------------------------------------------------------
@@ -444,6 +481,7 @@ struct ST_Runtime_TriggerCtx_t {
 // [PART 3] 원시 데이터(Raw) 및 진단 특징량 데이터 모델 (16-Byte Aligned)
 // ============================================================================
 
+// 가속도 원시 데이터 구조체
 struct alignas(16) ST_Raw_Accel_t {
     uint64_t ts;                            // 타임스탬프
     uint32_t sample_rate;                   // 샘플링 속도
@@ -451,6 +489,7 @@ struct alignas(16) ST_Raw_Accel_t {
     float    data[T2_Def::Accel::Sensor::AXIS_MAX][T2_Def::Accel::Sensor::FFT_SIZE_MAX];
 };
 
+// 가속도 원시 데이터 구조체
 struct alignas(16) ST_Raw_Gyro_t {
     uint64_t ts;                            // 타임스탬프
     uint32_t sample_rate;                   // 샘플링 속도
@@ -458,6 +497,7 @@ struct alignas(16) ST_Raw_Gyro_t {
     float    data[T2_Def::Gyro::Sensor::AXIS_MAX][T2_Def::Gyro::Sensor::FFT_SIZE_MAX]; // 자이로 데이터
 };
 
+// 오디오 원시 데이터 구조체
 struct alignas(16) ST_Raw_Audio_t {
     uint64_t ts;                            // 타임스탬프
     uint32_t sample_rate;                   // 샘플링 속도
@@ -465,6 +505,7 @@ struct alignas(16) ST_Raw_Audio_t {
     float    data[T2_Def::Audio::Sensor::CHANNELS_MAX][T2_Def::Audio::Sensor::FFT_SIZE_MAX]; // 오디오 데이터
 };
 
+// 스펙트럼 피크 데이터 구조체
 struct ST_SpectralPeak_t {
     float freq;                 // 피크 주파수
     float amp;                  // 피크 진폭
@@ -640,11 +681,11 @@ struct __attribute__((packed, aligned(16))) ST_PktTelemetry_t {
     uint8_t  _pad_header[4];       // 패딩 (4 Bytes)
 
     // [제로 카피 연산 영역] 구조체 최후미 배치 및 정렬 오버라이드
-    SMEA_ALIGN_16 float accel_band_energy[16];   // 가속도 1/3 옥타브 대역 에너지 (16 * 4 = 64 Bytes)
-    SMEA_ALIGN_16 float gyro_rms_energy[2];      // 자이로 RMS 에너지 (2 * 4 = 8 Bytes)
+    G_T2_10_Def_ALIGN_16 float accel_band_energy[16];   // 가속도 1/3 옥타브 대역 에너지 (16 * 4 = 64 Bytes)
+    G_T2_10_Def_ALIGN_16 float gyro_rms_energy[2];      // 자이로 RMS 에너지 (2 * 4 = 8 Bytes)
     uint8_t             _pad_gyro[8];            // 패딩 (8 Bytes)
-    SMEA_ALIGN_16 float audio_timbre_bands[32];  // 오디오 1/3 옥타브 대역 에너지 (32 * 4 = 128 Bytes)
-    SMEA_ALIGN_16 float audio_mfcc[13];          // 오디오 MFCC 계수 (13 * 4 = 52 Bytes)
+    G_T2_10_Def_ALIGN_16 float audio_timbre_bands[32];  // 오디오 1/3 옥타브 대역 에너지 (32 * 4 = 128 Bytes)
+    G_T2_10_Def_ALIGN_16 float audio_mfcc[13];          // 오디오 MFCC 계수 (13 * 4 = 52 Bytes)
     uint8_t             _pad_end[12];            // 패딩 (12 Bytes)
 };
 

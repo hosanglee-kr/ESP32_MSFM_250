@@ -40,7 +40,7 @@ private:
     uint32_t _learnedFrames;                        // 학습된 프레임 수
     bool     _isLearning;                           // 학습 플래그
     bool     _isInitialized;                        // 초기화 플래그
-    uint8_t  _activeMelBands;                       // 활성 멜 밴드 수
+    uint8_t  _activeMelBand_size;                   // 활성 멜 밴드 수
 
 	float*   _melBankIMU;                           // IMU용 Mel (BINS x MEL)
     float*   _dctMatrixIMU;                         // IMU용 DCT (MEL x MFCC)

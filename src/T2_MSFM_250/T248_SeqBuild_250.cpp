@@ -114,7 +114,7 @@ void MultiRateTimeAligner::injectNewVibSample(const float* p_rawFeats, uint64_t 
 
     constexpr size_t VIB_FEAT_CNT = T2_Def::AI::Tensor::MFCC_COEFFS_DEF * T2_Def::AI::Tensor::MFCC_COMPONENTS_DEF * (T2_Def::Accel::Sensor::AXIS_MAX + T2_Def::Gyro::Sensor::AXIS_MAX);
     for (size_t i = 0; i < VIB_FEAT_CNT; i++) {
-        _curr_vib.features[i] = SMEA_SAN_FLOAT(p_rawFeats[i]);
+        _curr_vib.features[i] = G_T2_10_Def_FPU_SAN_FLOAT(p_rawFeats[i]);
     }
     _curr_vib.timestamp_us = p_ts;
     _curr_vib.is_valid = true;
@@ -164,7 +164,7 @@ bool MultiRateTimeAligner::getAlignedVibration(uint64_t p_audioTs, float* p_outF
 // DynamicTensorBinder 구현
 // ========================================================================
 DynamicTensorBinder::DynamicTensorBinder(size_t p_nnInputSize)
-    : _audio_offset(INVALID_OFFSET), _vib_offset(INVALID_OFFSET), 
+    : _audio_offset(INVALID_OFFSET), _vib_offset(INVALID_OFFSET),
       _total_active_elements(0), _nn_input_boundary(p_nnInputSize) {}
 
 void DynamicTensorBinder::updateTensorOffsets(uint16_t p_activeMaskFlags, size_t p_audioFeatCnt, size_t p_vibFeatCnt) {
