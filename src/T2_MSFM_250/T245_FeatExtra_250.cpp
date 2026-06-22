@@ -44,7 +44,7 @@ CL_T2_FeatureExtractor::~CL_T2_FeatureExtractor() {
 }
 
 bool CL_T2_FeatureExtractor::init(const T2_Type::ST_Audio_Config_t& audioCfg) {
-    
+
     // 런타임 활성 Mel 대역 수 설정 (경계값 검증)
     _activeMelBands = audioCfg.mel_bands;
     // 설정값이 유효한 범위 내에 있는지 확인하고, 범위를 벗어나는 경우 기본값 사용
@@ -52,7 +52,7 @@ bool CL_T2_FeatureExtractor::init(const T2_Type::ST_Audio_Config_t& audioCfg) {
         _activeMelBands = T2_Def::Audio::FeatureLimit::MEL_BANDS_DEF;
     }
 
-    // 오디오용 버퍼 할당 
+    // 오디오용 버퍼 할당
     _melBankFlat   = (float*)heap_caps_aligned_alloc(16, BINS_PADDED * MEL_PADDED * sizeof(float), MALLOC_CAP_SPIRAM);
     _dctMatrixFlat = (float*)heap_caps_aligned_alloc(16, MEL_PADDED * MFCC_PADDED * sizeof(float), MALLOC_CAP_SPIRAM);
     _fftWorkAudio  = (float*)heap_caps_aligned_alloc(16, T2_Def::Audio::Sensor::FFT_SIZE_MAX * 2 * sizeof(float), MALLOC_CAP_SPIRAM);
@@ -60,17 +60,17 @@ bool CL_T2_FeatureExtractor::init(const T2_Type::ST_Audio_Config_t& audioCfg) {
     _windowAudio   = (float*)heap_caps_aligned_alloc(16, T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float), MALLOC_CAP_SPIRAM);
     _noiseProfile  = (float*)heap_caps_aligned_alloc(16, 2 * BINS_PADDED * sizeof(float), MALLOC_CAP_SPIRAM);
 
-    // 가속도 및 자이로 센서 공용 FFT, 파워 및 Cepstrum 복소수 버퍼 할당 
+    // 가속도 및 자이로 센서 공용 FFT, 파워 및 Cepstrum 복소수 버퍼 할당
     _fftWorkIMU    = (float*)heap_caps_aligned_alloc(16, T2_Def::Accel::Sensor::FFT_SIZE_MAX * 2 * sizeof(float), MALLOC_CAP_SPIRAM);
     _powerIMU      = (float*)heap_caps_aligned_alloc(16, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float), MALLOC_CAP_SPIRAM);
     _cepsIfftWork  = (float*)heap_caps_aligned_alloc(16, T2_Def::Audio::Sensor::FFT_SIZE_MAX * 2 * sizeof(float), MALLOC_CAP_SPIRAM);
 
 
-    // IMU 전용 Mel / DCT 할당 
+    // IMU 전용 Mel / DCT 할당
     _melBankIMU    = (float*)heap_caps_aligned_alloc(16, BINS_IMU_PADDED * MEL_PADDED * sizeof(float), MALLOC_CAP_SPIRAM);
     _dctMatrixIMU  = (float*)heap_caps_aligned_alloc(16, MEL_PADDED * MFCC_PADDED * sizeof(float), MALLOC_CAP_SPIRAM);
 
-    // MFCC 계산을 위한 이력 배열 
+    // MFCC 계산을 위한 이력 배열
     _mfccHistory   = (float (*)[T2_Def::AI::Tensor::DELTA_HISTORY_MAX][MFCC_PADDED])heap_caps_aligned_alloc(
                          16, sizeof(float) * 8 * T2_Def::AI::Tensor::DELTA_HISTORY_MAX * MFCC_PADDED, MALLOC_CAP_SPIRAM);
     // 델타 계산을 위한 이력 배열
@@ -385,7 +385,7 @@ void CL_T2_FeatureExtractor::extractAudio(const float* p_audL, const float* p_au
             }
             // 학습 프레임 카운트 증가
             if (_learnedFrames < UINT32_MAX) _learnedFrames++;
-        } else if (_learnedFrames > 0) { // 노이즈 학습이 되어 있을 경우    
+        } else if (_learnedFrames > 0) { // 노이즈 학습이 되어 있을 경우
             // 노이즈 제거 강도
             float v_subStr = p_audCfg.noise.sub_str;
             // 노이즈 제거 수행
@@ -403,11 +403,11 @@ void CL_T2_FeatureExtractor::extractAudio(const float* p_audL, const float* p_au
         p_audSlot.audio.ch[0].centroid = _computeSpectralCentroid(_powerAudio, v_bins, (float)p_sampleRate);
 
         // 피크 개수 결정
-        uint8_t v_peakCnt = p_audCfg.active_peak_count;      
+        uint8_t v_peakCnt = p_audCfg.active_peak_count;
         if (v_peakCnt == 0 || v_peakCnt > T2_Def::Audio::FeatureLimit::TOP_PEAKS_MAX) v_peakCnt = T2_Def::Audio::FeatureLimit::TOP_PEAKS_DEF;
         // 피크 추출
         _extractTopPeaks(_powerAudio, v_bins, (float)p_sampleRate, p_audSlot.audio.ch[0].top_peaks, v_peakCnt, p_audCfg.peak_amp_min, p_audCfg.peak_freq_gap_min);
-      
+
         // 밴드 에너지 계산
         _computeBandEnergies(_powerAudio, v_bins, (float)p_sampleRate, p_audCfg.active_band_count, p_audCfg.band_en, p_audCfg.band_start, p_audCfg.band_end, p_audSlot.audio.ch[0].band_energy);
 
@@ -415,7 +415,7 @@ void CL_T2_FeatureExtractor::extractAudio(const float* p_audL, const float* p_au
         Cache_Invalidate_Addr((uint32_t)_cepsIfftWork, T2_Def::Audio::Sensor::FFT_SIZE_MAX * 2 * sizeof(float));
         // 1. 시간축 데이터 초기화 및 로그 스케일링/대칭 복사
         for (uint32_t i = 0; i < v_len; i++) { _cepsIfftWork[i * 2] = 0.0f; _cepsIfftWork[i * 2 + 1] = 0.0f; }
-        
+
         // 로그 스케일링 및 대칭 복사
         for (uint32_t i = 0; i < v_bins; i++) {
             float v_val = log10f(fmaxf(_powerAudio[i], T2_Def::Global::System::MATH_EPSILON_12_CONST));
@@ -605,8 +605,8 @@ void CL_T2_FeatureExtractor::extractAudio(const float* p_audL, const float* p_au
     else if (v_len == 4096) mapOffset = 128;
 
     for (int b = 0; b < 32; b++) {
-        uint8_t startBin = g_BandBinMap[mapOffset + b * 2];
-        uint8_t endBin = g_BandBinMap[mapOffset + b * 2 + 1];
+        uint8_t startBin = g_T2_40_Dsp_BandBinMap_arr[mapOffset + b * 2];
+        uint8_t endBin = g_T2_40_Dsp_BandBinMap_arr[mapOffset + b * 2 + 1];
 
         float bandSum = 0.0f;
         for (uint32_t j = startBin; j <= endBin && j < v_bins; j++) {
@@ -628,7 +628,7 @@ void CL_T2_FeatureExtractor::_computeStats(const float* p_data, uint32_t p_len, 
         p_rms = 0.0f; p_kurt = 0.0f; p_crest = 0.0f; p_skew = 0.0f; p_std = 0.0f;
         return;
     }
-    
+
     // 온라인 알고리즘을 사용한 통계량 계산
     double mean = 0.0;
     double M2 = 0.0, M3 = 0.0, M4 = 0.0;
@@ -666,7 +666,7 @@ void CL_T2_FeatureExtractor::_computeStats(const float* p_data, uint32_t p_len, 
     p_skew = (p_std > T2_Def::Global::System::MATH_EPSILON_12_CONST) ? (float)(M3 / p_len) / (v_denom * p_std) : 0.0f;
     // 왜도 포화 처리
     p_skew = SMEA_SAN_FLOAT(p_skew);
-    
+
     // 첨도(Kurtosis) 계산
     p_kurt = SMEA_SAN_FLOAT((float)(M4 / p_len) / (v_denom * v_denom));
     // 첨도 포화 처리
@@ -775,7 +775,7 @@ void CL_T2_FeatureExtractor::_computeBandEnergies(const float* p_power, uint32_t
     }
 }
 
-// MFCC 계산    
+// MFCC 계산
 void CL_T2_FeatureExtractor::_computeMfcc(const float* p_power, uint32_t p_bins, float* p_outMfcc, uint8_t p_chIdx, bool isAudio) {
     if (p_chIdx >= 8) return;
 

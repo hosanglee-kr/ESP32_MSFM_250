@@ -15,29 +15,24 @@
 
 static const char*              TAG             = "T290_FSM";
 
-//// static volatile TaskHandle_t    g_isr_imu_task  = nullptr;
 
 //bmi 워터마크 인터럽트 핸들러
-static void IRAM_ATTR T2_90_IMU_watermark_isr() {
-    BaseType_t          v_woken       = pdFALSE;
+void IRAM_ATTR T2_90_IMU_watermark_isr() {
+// static void IRAM_ATTR T2_90_IMU_watermark_isr() {
+
+	BaseType_t          v_woken       = pdFALSE;
     uint32_t            v_ccount      = esp_cpu_get_ccount();
     static volatile uint32_t v_last_ccount = 0;
 
     // 0.5ms 이하의 비정상 인터럽트 무시 (스로틀링)
     if (v_ccount - v_last_ccount > 120000) {
         // 싱글톤 인스턴스가 존재하고 태스크 핸들이 유효하면 알림 전송
-        if (CL_T2_FsmManager::s_pInstance && 
+        if (CL_T2_FsmManager::s_pInstance &&
             CL_T2_FsmManager::s_pInstance->_hImuAcqTask) {
             vTaskNotifyGiveFromISR(CL_T2_FsmManager::s_pInstance->_hImuAcqTask, &v_woken);
             if (v_woken) portYIELD_FROM_ISR();
         }
-        
-        /*
-        if (g_isr_imu_task) {
-            vTaskNotifyGiveFromISR(g_isr_imu_task, &v_woken);
-            if (v_woken) portYIELD_FROM_ISR();
-        }
-        */
+
         v_last_ccount = v_ccount;
     }
 }
@@ -46,17 +41,17 @@ static void IRAM_ATTR T2_90_IMU_watermark_isr() {
 // 전역 인터페이스 함수들
 
 // 시스템 커맨드 디스패처
-void T240_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
+void T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
     CL_T2_FsmManager::getInstance().dispatchCommand(p_cmd);
 }
 
 // 시스템 상태 조회
-uint8_t T240_GetCurrentState() {
+uint8_t T2_90_Fsm_GetCurrentState() {
     return (uint8_t)CL_T2_FsmManager::getInstance().getState();
 }
 
 // DSP 필터 리로드
-void T240_ReloadDspFilters() {
+void T2_90_Fsm_ReloadDspFilters() {
     CL_T2_FsmManager::getInstance().reloadDspFilters();
 }
 
@@ -139,7 +134,7 @@ bool CL_T2_FsmManager::init() {
     // 공유 메모리 컨텍스트 할당 및 초기화
     _sharedCtx = (T2_Type::ST_SharedContext_t*)heap_caps_aligned_alloc(16, sizeof(T2_Type::ST_SharedContext_t), MALLOC_CAP_SPIRAM);
     memset(_sharedCtx, 0, sizeof(T2_Type::ST_SharedContext_t));
-    
+
     // 진동 센서 인덱스 초기화
     _sharedCtx->vib_idx.store(0);
     // 오디오 센서 인덱스 초기화
@@ -247,7 +242,7 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
     if (_state == T2_Type::EM_SystemState_t::MAINTENANCE &&
         p_cmd != T2_Type::EM_SystemCommand_t::CMD_REBOOT &&
         p_cmd != T2_Type::EM_SystemCommand_t::CMD_OTA_END) return;
-    
+
     // 커맨드 출력
     ESP_LOGI(TAG, "Command Dispatched: %d", (uint8_t)p_cmd);
     uint8_t v_sessCmd = 0;
@@ -257,13 +252,13 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
         case T2_Type::EM_SystemCommand_t::CMD_START:
             setState(T2_Type::EM_SystemState_t::MONITORING);
             break;
-            
+
         // STOP 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_STOP:
             _stopReasonCmd = (uint8_t)T2_Type::EM_AsyncSessionCmd_t::CLOSE_NORMAL;
             break;
-        
-        // 수동 녹음 시작 커맨드 처리   
+
+        // 수동 녹음 시작 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_MANUAL_REC_START:
             if (_state == T2_Type::EM_SystemState_t::READY || _state == T2_Type::EM_SystemState_t::MONITORING) {
                 _isManualRecording = true;
@@ -272,7 +267,7 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
                 xQueueSend(_qSessionCmd, &v_sessCmd, 0);
             }
             break;
-        
+
         // 수동 녹음 종료 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_MANUAL_REC_STOP:
             if (_state == T2_Type::EM_SystemState_t::RECORDING && _isManualRecording) {
@@ -280,12 +275,12 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
                 _stopReasonCmd = (uint8_t)T2_Type::EM_AsyncSessionCmd_t::CLOSE_MANUAL;
             }
             break;
-            
+
         // 노이즈 학습 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_LEARN_NOISE:
             _extractor.setNoiseLearning(true);
             break;
-            
+
         // 캘리브레이션 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_CALIBRATE:
             if (_state == T2_Type::EM_SystemState_t::READY) {
@@ -306,7 +301,7 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
             prepareForOta();
             setState(T2_Type::EM_SystemState_t::MAINTENANCE);
             break;
-        
+
         // OTA 종료 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_OTA_END:
             ESP_LOGI(TAG, "OTA Update Ended.");
@@ -401,7 +396,7 @@ void CL_T2_FsmManager::runMaintenance() {
 // ============================================================================
 void CL_T2_FsmManager::_imuAcqTask(void* p_param) {
     CL_T2_FsmManager* v_this = (CL_T2_FsmManager*)p_param;
-    
+
     v_this->_hImuAcqTask = xTaskGetCurrentTaskHandle();
     //// g_isr_imu_task = xTaskGetCurrentTaskHandle();
 
@@ -584,7 +579,7 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
                 // 더블 버퍼링: 쓰기 인덱스 결정
                 uint8_t v_write_idx = v_this->_sharedCtx->aud_idx.load(std::memory_order_relaxed) ^ 1;
                 auto&   v_aud_slot = v_this->_sharedCtx->aud_slots[v_write_idx];
-                
+
                 // Audio 특징량 구조체 초기화
                 memset(&v_aud_slot, 0, sizeof(T2_Type::ST_FeatureSlot_Aud_t));
 
@@ -596,7 +591,7 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
 
                 // 오디오 DSP 가공
                 v_this->_dsp.processAudio(v_rawAudioL, v_rawAudioR, v_outAudioL, v_outAudioR, v_samples, v_cfg.audio);
-                
+
                 // 오디오 특징 추출
                 v_this->_extractor.extractAudio(v_outAudioL, v_outAudioR, v_samples, v_cfg.audio.sample_rate, v_aud_slot, v_cfg.audio);
 
@@ -628,7 +623,7 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
                     v_tmpAud.active_mask = v_aud_slot.header.audio_mask;
                     memcpy(v_tmpAud.data[0], v_rawAudioL, T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float));
                     memcpy(v_tmpAud.data[1], v_rawAudioR, T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float));
-                    
+
                     // 원본 저장
                     v_this->_storage.pushAudioFrame(&v_aud_slot, &v_tmpAud);
                 }
@@ -843,11 +838,10 @@ void CL_T2_FsmManager::prepareForOta() {
 // OTA 복구
 void CL_T2_FsmManager::resumeFromOtaFailure() {
     ESP_LOGW(TAG, "OTA failure or ended. Resuming sensor processing pipeline...");
-    
+
     // 센서 인터럽트 복구 및 재매핑
-    extern void T200_handleTriggerISR();
-    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T200_handleTriggerISR, RISING);
-    
+    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T2_90_IMU_watermark_isr, RISING);
+
     // I2S DMA 재가동
     _sensor.startI2SDma();
 

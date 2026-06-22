@@ -28,7 +28,7 @@ CL_T2_StorageManager::CL_T2_StorageManager()
       _sessionStartTick(0),
       _sessionStartUs(0),
 
-      // [수정] 분리형 프리트리거 버퍼 포인터 초기화
+      // 프리트리거 버퍼 포인터 초기화
       _preAudBuf(nullptr),
       _preVibBuf(nullptr),
       _preAccBuf(nullptr),
@@ -39,7 +39,7 @@ CL_T2_StorageManager::CL_T2_StorageManager()
       _preAudHead(0), _preAudCount(0),
       _preVibHead(0), _preVibCount(0),
 
-      // [수정] 분리형 비동기 기록 링버퍼 포인터 초기화
+      // 비동기 기록 링버퍼 포인터 초기화
       _asyncAudRing(nullptr),
       _asyncVibRing(nullptr),
       _asyncAccRing(nullptr),
@@ -48,7 +48,7 @@ CL_T2_StorageManager::CL_T2_StorageManager()
       _asyncAudHead(0), _asyncAudTail(0),
       _asyncVibHead(0), _asyncVibTail(0),
 
-      // [수정] 분리형 내부 바운스 버퍼 포인터 초기화
+      // 내부 바운스 버퍼 포인터 초기화
       _bounceAudFeat(nullptr),
       _bounceVibFeat(nullptr),
       _bounceAcc(nullptr),
@@ -60,13 +60,14 @@ CL_T2_StorageManager::CL_T2_StorageManager()
       _qVibStorage(nullptr),
       _hStorageTask(nullptr) {
 
-    // 전역 자원 제어용 고속 재귀 뮤텍스 생성
+    // 자원 제어용 고속 재귀 뮤텍스 생성
     _lock = xSemaphoreCreateRecursiveMutex();
-    _fsLock = xSemaphoreCreateMutex(); // [신규] LittleFS 뮤텍스 생성
+    _fsLock = xSemaphoreCreateMutex();
 
+    // 트리거 사유 구조체 안전 초기화
     memset(&_triggerReason, 0, sizeof(_triggerReason));
 
-    // 경로 및 접두사 버퍼 안전 초기화
+    // 파일 경로 초기화
     memset(_audBinPath, 0, sizeof(_audBinPath));
     memset(_vibBinPath, 0, sizeof(_vibBinPath));
     memset(_wavPath, 0, sizeof(_wavPath));
@@ -117,10 +118,10 @@ bool CL_T2_StorageManager::init() {
     _loadIndex();
 
     // NVS에서 _rotationSubSeq 복구
-    Preferences prefs;
-    prefs.begin("storage", true);
-    _rotationSubSeq = prefs.getUShort("file_seq", 0);
-    prefs.end();
+    Preferences v_prefs;
+    v_prefs.begin("storage", true);
+    _rotationSubSeq = v_prefs.getUShort("file_seq", 0);
+    v_prefs.end();
 
     if (!_hStorageTask) {
         xTaskCreatePinnedToCore(_storageTaskProc, "StorageTask",
@@ -505,7 +506,7 @@ void CL_T2_StorageManager::dumpPreTriggerToSession() {
     // 2.21 & 2.8 모순 해결을 위한 스냅샷 바운스 버퍼 도입
     // _lock을 획득하고 링 버퍼에 있는 데이터를 임시 로컬 메모리 버퍼로 빠르게 일괄 복사한 후 _lock을 즉시 해제
     xSemaphoreTakeRecursive(_lock, portMAX_DELAY);
-    
+
     uint16_t audCount = _preAudCount;
     uint16_t audReadIdx = (audCount == _preAudCapacity) ? _preAudHead : 0;
     uint16_t vibCount = _preVibCount;
@@ -639,10 +640,10 @@ void CL_T2_StorageManager::checkRotation() {
 
     if (v_req) {
         _rotationSubSeq++;
-        Preferences prefs;
-        prefs.begin("storage", false);
-        prefs.putUShort("file_seq", _rotationSubSeq);
-        prefs.end();
+        Preferences v_prefs;
+        v_prefs.begin("storage", false);
+        v_prefs.putUShort("file_seq", _rotationSubSeq);
+        v_prefs.end();
 
         char v_prevPrefix[32];
         strncpy(v_prevPrefix, _currentPrefix, sizeof(v_prevPrefix) - 1);

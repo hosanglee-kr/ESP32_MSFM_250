@@ -34,7 +34,7 @@
 #define ESP_DSP_VERSION_CHECK_VAL 10802
 
 // 192바이트 규모의 정적 인덱스 룩업 테이블 (내부 SRAM 상주)
-extern const uint16_t g_BandBinMap[192] DRAM_ATTR;
+extern const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] DRAM_ATTR;
 
 
 // FPU NaN/Inf 및 안전 연산 세이프티 매크로
@@ -262,13 +262,13 @@ namespace Accel {
         // --- 힐버트 필터 및 군지연 보정 상수 (31차 FIR) ---
         inline constexpr uint16_t HILBERT_FIR_TAPS    = 31;        // 힐버트 필터 탭 수 (31차 정수형 FIR 구현)
         inline constexpr uint16_t HILBERT_GROUP_DELAY = (HILBERT_FIR_TAPS - 1) / 2; // 힐버트 군지연(Group Delay) 15
-        
+
         static_assert(HILBERT_GROUP_DELAY == 15, "Hilbert Filter Group Delay configuration mismatch!");
         static_assert(ESP_DSP_VERSION_CHECK_VAL == 10802, "esp-dsp version assertion failed!");
 
         // 현상: STA_SAMPLES_DEF = 1600/1000 = 1, LTA_SAMPLES_DEF = 1600/100 = 16로 STA가 1샘플에 불과하여 STA/LTA가 무력화됨.
         // 해결방안: 해당 상수를 (샘플레이트 * 시구간_ms) / 1000 형태로 재정의합니다. 동시에 uint32_t에 맞게 반올림 처리합니다.
-        inline constexpr uint32_t STA_DURATION_MS     = 1;          // 1ms                                            
+        inline constexpr uint32_t STA_DURATION_MS     = 1;          // 1ms
         inline constexpr uint32_t LTA_DURATION_MS     = 10;         // 10ms
         inline constexpr uint32_t STA_SAMPLES_DEF     = (Sensor::RATE_DEF * STA_DURATION_MS + 500) / 1000;   // (1600*1)/1000 = 1.6 → 2
         inline constexpr uint32_t LTA_SAMPLES_DEF = (Sensor::RATE_DEF * LTA_DURATION_MS + 500) / 1000;   // (1600*10)/1000 = 16 → 16
@@ -290,7 +290,7 @@ namespace Accel {
         inline constexpr float        BAND_RANGES_DEF[FeatureLimit::BAND_MAX][2] = {
             {10.0f, 30.0f}, {30.0f, 60.0f}, {60.0f, 100.0f}, {100.0f, 250.0f}, {250.0f, 400.0f}, {400.0f, 600.0f}, {600.0f, 800.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}};
     }  // namespace Trigger
-    
+
     namespace Calib {
         inline constexpr char const*  FILE_JSON_CONST     = "/sys/acc_calib_250.json";     // 가속도 영점 보정 파일
         inline constexpr uint16_t     TARGET_SAMPLES_DEF  = 100;                           // 캘리브레이션 목표 샘플

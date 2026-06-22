@@ -17,9 +17,9 @@
 static const char* TAG = "T280_CAL";
 
 // FSM 명령 하달 인터페이스 (외부)
-extern void T240_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd);
+extern void T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd);
 
-static void _replacePath(const char* p_src, char* p_dest, size_t p_maxLen, const char* p_newExt) {
+static void _T2_80_Cailb_replacePath(const char* p_src, char* p_dest, size_t p_maxLen, const char* p_newExt) {
     std::string v_str(p_src);
     size_t v_pos = v_str.find("/bin/");
     if (v_pos != std::string::npos) {
@@ -32,7 +32,7 @@ static void _replacePath(const char* p_src, char* p_dest, size_t p_maxLen, const
     strlcpy(p_dest, v_str.c_str(), p_maxLen);
 }
 
-static void _findCompanionPath(const char* p_src, char* p_dest, size_t p_maxLen, bool p_toAudio) {
+static void _T2_80_Cailb_findCompanionPath(const char* p_src, char* p_dest, size_t p_maxLen, bool p_toAudio) {
     std::string v_str(p_src);
     if (p_toAudio) {
         size_t v_pos = v_str.find(".vib.bin");
@@ -122,10 +122,10 @@ void CL_T2_Calibrator::_processAuto(const char* p_path) {
     char v_wavPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];
     char v_companionPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];
 
-    _replacePath(p_path, v_accPath, sizeof(v_accPath), "acc");
-    _replacePath(p_path, v_gyrPath, sizeof(v_gyrPath), "gyr");
-    _replacePath(p_path, v_wavPath, sizeof(v_wavPath), "wav");
-    _findCompanionPath(p_path, v_companionPath, sizeof(v_companionPath), true);
+    _T2_80_Cailb_replacePath(p_path, v_accPath, sizeof(v_accPath), "acc");
+    _T2_80_Cailb_replacePath(p_path, v_gyrPath, sizeof(v_gyrPath), "gyr");
+    _T2_80_Cailb_replacePath(p_path, v_wavPath, sizeof(v_wavPath), "wav");
+    _T2_80_Cailb_findCompanionPath(p_path, v_companionPath, sizeof(v_companionPath), true);
 
     // 1. 가속도 데이터 무결성 누적 연산 (Internal SRAM 블록 로딩)
     double v_sumSqAcc[T2_Def::Accel::Sensor::AXIS_MAX] = {0.0};
@@ -253,10 +253,10 @@ void CL_T2_Calibrator::_processManual(const char* p_path) {
     char v_wavPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];
     char v_companionPath[T2_Def::Global::StorageLimit::PATH_LEN_MAX];
 
-    _replacePath(p_path, v_accPath, sizeof(v_accPath), "acc");
-    _replacePath(p_path, v_gyrPath, sizeof(v_gyrPath), "gyr");
-    _replacePath(p_path, v_wavPath, sizeof(v_wavPath), "wav");
-    _findCompanionPath(p_path, v_companionPath, sizeof(v_companionPath), true);
+    _T2_80_Cailb_replacePath(p_path, v_accPath, sizeof(v_accPath), "acc");
+    _T2_80_Cailb_replacePath(p_path, v_gyrPath, sizeof(v_gyrPath), "gyr");
+    _T2_80_Cailb_replacePath(p_path, v_wavPath, sizeof(v_wavPath), "wav");
+    _T2_80_Cailb_findCompanionPath(p_path, v_companionPath, sizeof(v_companionPath), true);
 
     File v_wavFile = SD_MMC.open(v_wavPath, "r");
     if (!v_wavFile) {

@@ -18,19 +18,24 @@
 
 class CL_T2_Communicator {
 private:
-    AsyncWebServer _server;
-    AsyncWebSocket _ws;
-    WiFiClient     _wifiClient;
+    AsyncWebServer _server;                 // AsyncWebServer 객체
+    AsyncWebSocket _ws;                     // AsyncWebSocket 객체
+    WiFiClient     _wifiClient;             // WiFi 클라이언트
 
-    esp_mqtt_client_handle_t _mqttHandle;
+    esp_mqtt_client_handle_t _mqttHandle;   // MQTT 핸들
 
-    uint32_t _lastMqttRetryMs;
-    uint32_t _lastWifiRetryMs;
-    bool     _isOtaRunning;
+    uint32_t _lastMqttRetryMs;              // 마지막 MQTT 재시도 시간
+    uint32_t _lastWifiRetryMs;              // 마지막 WiFi 재시도 시간
+    bool     _isOtaRunning;                 // OTA 실행 중 여부
 
     // 내부 유틸리티
+    // TCP Keep-Alive 강제 설정 (좀비 소켓 방지)
     void _enforceTcpKeepAlive(int p_fd);
+
+    // 웹 핸들러 초기화
     void _initWebHandlers();
+
+    // CORS 헤더 설정
     void _setCorsHeaders(AsyncWebServerResponse* p_response);
 
     // MQTT 콜백 (Static)
@@ -40,31 +45,26 @@ public:
     CL_T2_Communicator();
     ~CL_T2_Communicator();
 
-    /**
-     * @brief 통신 인프라 초기화 (WiFi 연결, 웹서버 시작, MQTT 핸들 생성)
-     */
+    // 통신 인프라 초기화 (WiFi 연결, 웹서버 시작, MQTT 핸들 생성)
     bool init();
 
-    /**
-     * @brief 네트워크 상태 유지 및 재연결 관리 (Main Loop에서 호출)
-     */
+    // 네트워크 상태 유지 및 재연결 관리 (Main Loop에서 호출)
     void runNetwork();
 
-    /**
-     * @brief WebSocket을 통한 실시간 바이너리 데이터 브로드캐스트
-     */
+    // WebSocket을 통한 실시간 바이너리 데이터 브로드캐스트
     void broadcastBinary(const void* p_buffer, size_t p_bytes);
 
-    /**
-     * @brief MQTT를 통한 진단 결과 보고
-     */
+    // MQTT를 통한 진단 결과 보고
     bool publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& p_audSlot,
-                                           const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot,
-                                           T2_Type::EM_DetectionResult_t p_result);
+                           const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot,
+                           T2_Type::EM_DetectionResult_t p_result);
 
+    // WiFi 연결 상태 확인 게터
     bool isConnected() const { return WiFi.status() == WL_CONNECTED; }
 
-    // [신규] MQTT 클라이언트 동적 재생성 및 웹소켓 연결 확인 게터
+    // MQTT 클라이언트 동적 재생성
     void recreateMqttClient(const esp_mqtt_client_config_t& p_newCfg);
+
+    // WebSocket 연결 확인 게터
     bool hasActiveWebsockets() const { return _ws.count() > 0; }
 };

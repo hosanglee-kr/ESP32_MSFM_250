@@ -144,7 +144,7 @@ private:
     volatile T2_Type::EM_SystemState_t 	_state    = T2_Type::EM_SystemState_t::INIT;  // 시스템 상태
 
     // 태스크 핸들 및 통신 큐
-    TaskHandle_t 			_hImuAcqTask 	= nullptr;  // IMU 획득 태스크 핸들 
+    TaskHandle_t 			_hImuAcqTask 	= nullptr;  // IMU 획득 태스크 핸들
     TaskHandle_t 			_hAudioTask 	= nullptr;  // 오디오 태스크 핸들
     TaskHandle_t 			_hVibTask 		= nullptr;  // 진동 태스크 핸들
 
@@ -169,20 +169,24 @@ private:
     uint8_t  							_waveformHz = 0;            // 파형 주율
     uint8_t  							_spectrumHz = 0;            // 스펙트럼 주율
     uint8_t  							_sequenceHz = 0;            // 시퀀스 주율
-    uint8_t  							_accTele = 0, _accWave = 0, _accSpec = 0, _accSeq = 0; // 누적 카운터(주율)
+
+    uint8_t  							_accTele = 0;               // 누적 카운터(텔레메트리)
+	uint8_t  							_accWave = 0;               // 누적 카운터(파형)
+	uint8_t  							_accSpec = 0;               // 누적 카운터(스펙트럼)
+	uint8_t  							_accSeq  = 0;               // 누적 카운터(시퀀스)
 
     // 비동기 세션 제어 및 Graceful Close용
-    QueueHandle_t                   _qSessionCmd = nullptr;     // 세션 제어용 큐
-    uint8_t                         _stopReasonCmd = 0;           // 중지 이유 코드
+    QueueHandle_t                       _qSessionCmd = nullptr;     // 세션 제어용 큐
+    uint8_t                             _stopReasonCmd = 0;         // 중지 이유 코드
 
-    T2_Type::ST_SharedContext_t*    _sharedCtx = nullptr;       // 공유 메모리 포인터    
-    
-    // 비동기 텐서 조립을 위한 정적 패딩 버퍼 (VLA 방지)        
-    float _flatTensor[T2_Def::AI::Tensor::MFCC_DIM_DEF];
+    T2_Type::ST_SharedContext_t*        _sharedCtx = nullptr;       // 공유 메모리 포인터
+
+    // 비동기 텐서 조립을 위한 정적 패딩 버퍼 (VLA 방지)
+    float                               _flatTensor[T2_Def::AI::Tensor::MFCC_DIM_DEF];
 
     // 프리엠프티브 하드웨어 차단 및 수명주기 래치 관리자 (Tier 4)
-    PreemptiveSafetyInterlock* _interlock = nullptr;       // 하드웨어 차단기
-    SafetyLifecycleManager*    _safetyManager = nullptr;   // 소프트웨어 래치 관리자
+    PreemptiveSafetyInterlock*          _interlock     = nullptr;   // 하드웨어 차단기
+    SafetyLifecycleManager*             _safetyManager = nullptr;   // 소프트웨어 래치 관리자
 
 private:
     // 내부 메서드

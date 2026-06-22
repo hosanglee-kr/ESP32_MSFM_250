@@ -14,7 +14,7 @@
 static const char* TAG = "T240_DSP";
 
 // --- 1/3 Octave band bin index map (32 bands x 3 resolutions x 2 indices = 192 bytes, 내부 SRAM 상주) ---
-const uint16_t g_BandBinMap[192] DRAM_ATTR = {
+const uint16_t g_T2_40_Dsp_BandBinMap_arr[192] DRAM_ATTR = {
     // 1024 FFT 예시 (start, end bin)
     2, 2,  3, 3,  4, 4,  5, 5,  6, 6,  7, 8,  9, 10, 11, 13,
     14, 16, 17, 20, 21, 25, 26, 32, 33, 40, 41, 50, 51, 63, 64, 79,
@@ -27,7 +27,7 @@ const uint16_t g_BandBinMap[192] DRAM_ATTR = {
 };
 
 // --- 31차 힐버트 FIR 필터 계수 정의 (.rodata Flash XIP 상주) ---
-const float g_HilbertCoeffs[31] SMEA_FLASH_RODATA = {
+const float g_T2_40_Dsp_HilbertCoeffs_arr[31] SMEA_FLASH_RODATA = {
     -0.0051f, 0.0f, -0.0084f, 0.0f, -0.0145f, 0.0f, -0.0262f, 0.0f,
     -0.0513f, 0.0f, -0.1132f, 0.0f, -0.3183f, 0.0f, 0.0f, 0.0f,
     0.3183f, 0.0f, 0.1132f, 0.0f, 0.0513f, 0.0f, 0.0262f, 0.0f,
@@ -44,24 +44,24 @@ inline void safe_dsps_fir_f32(fir_f32_t* fir, const float* input, float* output,
 
 CL_T2_DspEngine::CL_T2_DspEngine() {
     _isInitialized = false;
-    
+
     _audDsp = nullptr;                  // 오디오 DSP 런타임
     _accDsp = nullptr;                  // 가속도 DSP 런타임
     _gyrDsp = nullptr;                  // 자이로 DSP 런타임
-    
+
     _capBufL = nullptr;                 // 오디오 캡처 버퍼 L
     _capBufR = nullptr;                 // 오디오 캡처 버퍼 R
     _prcBufL = nullptr;                 // 오디오 프로세스 버퍼 L
     _prcBufR = nullptr;                 // 오디오 프로세스 버퍼 R
-    
+
     _accBufX = nullptr;                 // 가속도 버퍼 X
     _accBufY = nullptr;                 // 가속도 버퍼 Y
     _accBufZ = nullptr;                 // 가속도 버퍼 Z
-    
+
     _gyrBufX = nullptr;                 // 자이로 버퍼 X
     _gyrBufY = nullptr;                 // 자이로 버퍼 Y
     _gyrBufZ = nullptr;                 // 자이로 버퍼 Z
-    
+
     _accHilbertEnvX = nullptr;          // 가속도 힐버트 변환 버퍼 X
     _accHilbertEnvY = nullptr;          // 가속도 힐버트 변환 버퍼 Y
     _accHilbertEnvZ = nullptr;          // 가속도 힐버트 변환 버퍼 Z
@@ -126,18 +126,18 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
                 _audDsp = (ST_AudioDspRuntime*)heap_caps_aligned_alloc(16, sizeof(ST_AudioDspRuntime), MALLOC_CAP_SPIRAM);
             }
         }
-        // 윈도우 함수 초기화   
+        // 윈도우 함수 초기화
         if (_audDsp) {
             switch (p_cfg.audio.dsp.win_type) {
                 // 윈도우 타입 설정
-                case T2_Type::EM_WindowType_t::HAMMING:  
-                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);  
+                case T2_Type::EM_WindowType_t::HAMMING:
+                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);
                     break;
-                case T2_Type::EM_WindowType_t::BLACKMAN: 
-                    dsps_wind_blackman_f32(_audDsp->window, p_cfg.audio.fft_size); 
+                case T2_Type::EM_WindowType_t::BLACKMAN:
+                    dsps_wind_blackman_f32(_audDsp->window, p_cfg.audio.fft_size);
                     break;
-                default:                            
-                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);     
+                default:
+                    dsps_wind_hann_f32(_audDsp->window, p_cfg.audio.fft_size);
                     break;
             }
         }
@@ -146,7 +146,7 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
         if (!_capBufL) _capBufL = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_capBufR) _capBufR = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         // 프로세스 버퍼 메모리 할당
-        if (!_prcBufL) _prcBufL = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);    
+        if (!_prcBufL) _prcBufL = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
         if (!_prcBufR) _prcBufR = (float*)heap_caps_aligned_alloc(16, v_fSizeAudio, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     } else {
         // 오디오 DSP 메모리 해제
@@ -156,7 +156,7 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
         if (_capBufR) { heap_caps_free(_capBufR); _capBufR = nullptr; }
         // 프로세스 버퍼 메모리 해제
         if (_prcBufR) { heap_caps_free(_prcBufR); _prcBufR = nullptr; }
-        if (_prcBufL) { heap_caps_free(_prcBufL); _prcBufL = nullptr; }        
+        if (_prcBufL) { heap_caps_free(_prcBufL); _prcBufL = nullptr; }
     }
 
     // [처리 단위 2] 가속도 센서용 DSP 메모리 동적 할당 및 윈도우 초기화
@@ -175,7 +175,7 @@ bool CL_T2_DspEngine::init(const T2_Type::ST_DynamicConfig_t& p_cfg) {
             // 힐버트 FIR 필터 인스턴스 초기화
             for (int i = 0; i < T2_Def::Accel::Sensor::AXIS_MAX; i++) {
                 memset(_accDsp->fir_state_hilbert[i], 0, sizeof(_accDsp->fir_state_hilbert[i]));
-                dsps_fir_init_f32(&_accDsp->fir_inst_hilbert[i], const_cast<float*>(g_HilbertCoeffs), _accDsp->fir_state_hilbert[i], T2_Def::Accel::FeatureLimit::HILBERT_FIR_TAPS);
+                dsps_fir_init_f32(&_accDsp->fir_inst_hilbert[i], const_cast<float*>(g_T2_40_Dsp_HilbertCoeffs_arr), _accDsp->fir_state_hilbert[i], T2_Def::Accel::FeatureLimit::HILBERT_FIR_TAPS);
             }
         }
     } else {
@@ -382,7 +382,7 @@ void CL_T2_DspEngine::reloadFilters(const T2_Type::ST_DynamicConfig_t& p_cfg) {
             _calcIirCoeffs(v_dsp.iir_lpf.cutoff, v_dsp.iir_lpf.q, _gyrDsp->iir_lpf_coeffs, p_gyrSampleRate, false);
         }
     }
-    
+
     // hpf 필터 탭 수 확인
     uint16_t v_taps = 0;
     if (_accDsp) v_taps = p_cfg.accel.dsp.hpf.taps;
@@ -454,7 +454,7 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
         float v_soundSpeed = 331.5f + 0.6f * _tempC;
         // 빔포밍 게인 스케일 보정
         float v_correctedBeamGain = p_audCfg.beam_gain * (340.0f / v_soundSpeed); // 340m/s(상온 기준) 기준 스케일 보정
-        
+
         // 출력 버퍼가 존재하는 경우
         if (p_outL) {
             // 빔포밍 합성 및 게인 적용
@@ -463,7 +463,7 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             }
             // DC 제거
             _removeDC(p_outL, v_len);
-            
+
             // 미디언 필터
             if (v_dsp.med_en) _applyMedianFilter(p_outL, _audDsp->median_hist[0], v_dsp.med_win, v_len);
             // 프리 엠퍼시스
@@ -498,7 +498,7 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             memcpy(p_outL, p_audL, v_len * sizeof(float));
             // DC 제거
             _removeDC(p_outL, v_len);
-            
+
             // 미디언 필터
             if (v_dsp.med_en) {
                 _applyMedianFilter(p_outL, _audDsp->median_hist[0], v_dsp.med_win, v_len);
@@ -545,7 +545,7 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
             memcpy(p_outR, p_audR, v_len * sizeof(float));
             // DC 제거
             _removeDC(p_outR, v_len);
-            
+
             // 미디언 필터
             if (v_dsp.med_en) {
                 _applyMedianFilter(p_outR, _audDsp->median_hist[1], v_dsp.med_win, v_len);
@@ -614,14 +614,14 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
             float rawFullScale = (float)p_accCfg.range;
             // 95% 임계값 계산
             float esdThresh = rawFullScale * 0.95f;
-            
+
             // 임시 버퍼 준비
             alignas(16) float tempFiltered[T2_Def::Accel::Sensor::FFT_SIZE_MAX];
             memcpy(tempFiltered, v_out[i], p_len * sizeof(float));
-            
+
             // 1차 메디안 필터 적용
             _applyMedianFilter(tempFiltered, _accDsp->median_hist[i], v_dsp.med_win, p_len);
-            
+
             // 2차 메디안 필터 적용 (임계값 초과 데이터만)
             for (uint32_t j = 0; j < p_len; j++) {
                 if (fabsf(v_out[i][j]) > esdThresh) {
@@ -666,7 +666,7 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
         alignas(16) float hilbertPhaseShift[T2_Def::Accel::Sensor::FFT_SIZE_MAX] = {0};
         // 힐버트 변환
         safe_dsps_fir_f32(&_accDsp->fir_inst_hilbert[i], v_out[i], hilbertPhaseShift, p_len);
-        
+
         // 군지연 보정
         const uint16_t delay = T2_Def::Accel::FeatureLimit::HILBERT_GROUP_DELAY;
         // 진폭 포락선 추출

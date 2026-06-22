@@ -1095,7 +1095,7 @@ bool CL_T2_ConfigManager::save() {
     v_aud["peak_amp_min"]      = _dynConfig.audio.peak_amp_min;
     v_aud["peak_freq_gap_min"] = _dynConfig.audio.peak_freq_gap_min;
 
-    serializeDspConfig(v_aud["dsp"].to<JsonObject>(), _dynConfig.audio.dsp);    
+    serializeDspConfig(v_aud["dsp"].to<JsonObject>(), _dynConfig.audio.dsp);
 
     // [처리 단위 6] 원자적 쓰기(Atomic Write) 수행
     File v_tmp = LittleFS.open(T2_Def::Global::Path::FILE_CFG_TMP_CONST, "w");
@@ -1211,8 +1211,8 @@ bool CL_T2_ConfigManager::revertCancel() {
     bool res = load();
     if (res) {
         // [이슈 10.req_250_001.md 항목 124번 해결] 취소 후 복원된 실제 정상 설정을 DSP 엔진 필터에 재로드
-        extern void T240_ReloadDspFilters();
-        T240_ReloadDspFilters();
+        extern void T2_90_Fsm_ReloadDspFilters();
+        T2_90_Fsm_ReloadDspFilters();
     }
     return res;
 }
@@ -1264,7 +1264,7 @@ bool CL_T2_WalDriver::init() {
     _nextSlotIdx = 0;
     _latestSeqId = 0;
 
-    ESP_LOGI("WAL", "Initialized. Partition Size: %u, Slot Size: %u, Total Slots: %u", 
+    ESP_LOGI("WAL", "Initialized. Partition Size: %u, Slot Size: %u, Total Slots: %u",
              _partition->size, _slotSize, _totalSlots);
     return true;
 }
