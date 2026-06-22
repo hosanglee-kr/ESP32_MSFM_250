@@ -15,20 +15,29 @@
 
 static const char*              TAG             = "T290_FSM";
 
-static volatile TaskHandle_t    g_isr_imu_task  = nullptr;
+//// static volatile TaskHandle_t    g_isr_imu_task  = nullptr;
 
 //bmi 워터마크 인터럽트 핸들러
-static void IRAM_ATTR T245_bmi_watermark_isr() {
+static void IRAM_ATTR T2_90_IMU_watermark_isr() {
     BaseType_t          v_woken       = pdFALSE;
     uint32_t            v_ccount      = esp_cpu_get_ccount();
     static volatile uint32_t v_last_ccount = 0;
 
     // 0.5ms 이하의 비정상 인터럽트 무시 (스로틀링)
     if (v_ccount - v_last_ccount > 120000) {
+        // 싱글톤 인스턴스가 존재하고 태스크 핸들이 유효하면 알림 전송
+        if (CL_T2_FsmManager::s_pInstance && 
+            CL_T2_FsmManager::s_pInstance->_hImuAcqTask) {
+            vTaskNotifyGiveFromISR(CL_T2_FsmManager::s_pInstance->_hImuAcqTask, &v_woken);
+            if (v_woken) portYIELD_FROM_ISR();
+        }
+        
+        /*
         if (g_isr_imu_task) {
             vTaskNotifyGiveFromISR(g_isr_imu_task, &v_woken);
             if (v_woken) portYIELD_FROM_ISR();
         }
+        */
         v_last_ccount = v_ccount;
     }
 }
@@ -392,10 +401,12 @@ void CL_T2_FsmManager::runMaintenance() {
 // ============================================================================
 void CL_T2_FsmManager::_imuAcqTask(void* p_param) {
     CL_T2_FsmManager* v_this = (CL_T2_FsmManager*)p_param;
-    g_isr_imu_task = xTaskGetCurrentTaskHandle();
+    
+    v_this->_hImuAcqTask = xTaskGetCurrentTaskHandle();
+    //// g_isr_imu_task = xTaskGetCurrentTaskHandle();
 
     // 초기 인터럽트 연결 (BMI270 Watermark RISING 엣지)
-    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T245_bmi_watermark_isr, RISING);
+    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T2_90_IMU_watermark_isr, RISING);
 
     // 메인 루프
     while (v_this->_state != T2_Type::EM_SystemState_t::INIT) {
@@ -417,7 +428,7 @@ void CL_T2_FsmManager::_imuAcqTask(void* p_param) {
 
     // 종료 시 리소스 정리
     detachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST));
-    g_isr_imu_task = nullptr;
+    //// g_isr_imu_task = nullptr;
     v_this->_hImuAcqTask = nullptr;
     vTaskDelete(NULL);
 }
@@ -889,3 +900,5 @@ void CL_T2_FsmManager::broadcastTelemetryPayload(const T2_Type::ST_FeatureSlot_V
     _comm.broadcastBinary(reinterpret_cast<uint8_t*>(&v_pkt), sizeof(v_pkt));
 }
 
+// 전역 스코프에서 정적맴버 초기화
+CL_T2_FsmManager* CL_T2_FsmManager::s_pInstance = nullptr;

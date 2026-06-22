@@ -124,6 +124,9 @@ public:
 class CL_T2_FsmManager;
 class CL_T2_FsmManager {
 private:
+
+    static CL_T2_FsmManager* s_pInstance;   // ISR 역참조용 싱글톤 포인터
+
     CL_T2_SensorEngine      _sensor;        // 센서 엔진
     CL_T2_DspEngine         _dsp;           // DSP 엔진
     CL_T2_FeatureExtractor  _extractor;     // 특징 추출 엔진
@@ -209,6 +212,7 @@ public:
     // 싱글톤 접근
     static CL_T2_FsmManager& getInstance() {
         static CL_T2_FsmManager v_inst;
+        s_pInstance = &v_inst;   // ISR이 접근할 수 있도록 주소 저장
         return v_inst;
     }
 
