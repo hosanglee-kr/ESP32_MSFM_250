@@ -587,15 +587,17 @@ void CL_T2_DspEngine::processAudio(const float* p_audL, const float* p_audR, flo
     }
 }
 
+
 // 가속도 센서 3축 신호에 대해 메디안 정렬 필터, 노치 거부, 대역 IIR 및 FIR 필터, DC 오프셋 제거를 차례대로 병렬 처리 수행합니다. (p_inX/Y/Z: 원시 입력, p_outX/Y/Z: 출력 대상, p_len: 샘플 길이, p_accCfg: 센서 사양 구조체)
-void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const float* p_inZ,
-                                  float* p_outX, float* p_outY, float* p_outZ, uint32_t p_len,
+void CL_T2_DspEngine::processAccel(const  float* p_inX, const float* p_inY, const float* p_inZ,
+                                          float* p_outX,      float* p_outY,      float* p_outZ, uint32_t p_len,
                                   const T2_Type::ST_Accel_Config_t& p_accCfg) {
     if (!_isInitialized || !_accDsp) return;
 
     // 가속도 각 축별 포인터 및 설정값 준비
     float*       v_out[3] = {p_outX, p_outY, p_outZ};     // 출력 버퍼 포인터 배열
     const float* v_in[3]  = {p_inX,  p_inY,  p_inZ};      // 입력 버퍼 포인터 배열
+    
     const T2_Type::ST_Dsp_Config_t& v_dsp = p_accCfg.dsp; // DSP 설정 구조체
 
     // 가속도 각 축별 5단계 필터 체인(Median -> Notch -> IIR HPF/LPF -> FIR -> DC) 가동
@@ -605,44 +607,49 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
 
         // 입력 데이터 복사
         memcpy(v_out[i], v_in[i], p_len * sizeof(float));
-        // DC 제거
+        
+        // DC 제거 1차
         _removeDC(v_out[i], p_len);
 
-        // 적응형 2단계 메디안 필터링 (풀스케일 95% 초과만 적용, 그 외 바이패스)
+        // 적응형 2단계 메디안 필터링 : 돌발적인 임펄스 노이즈(스파이크)를 제거
+        // - 풀스케일 95% 초과 데이터만 메디안필터 적용, 그 외 바이패스)
         if (v_dsp.med_en) {
+            
             // 풀스케일 범위 계산
-            float rawFullScale = (float)p_accCfg.range;
+            float v_rawFullScale = (float)p_accCfg.range;
             // 95% 임계값 계산
-            float esdThresh = rawFullScale * 0.95f;
+            float v_esdThresh = v_rawFullScale * 0.95f;
 
-            // 임시 버퍼 준비
-            alignas(16) float tempFiltered[T2_Def::Accel::Sensor::FFT_SIZE_MAX];
-            memcpy(tempFiltered, v_out[i], p_len * sizeof(float));
+            // 1차 메디안 필터용 임시 버퍼 준비
+            alignas(16) float v_tempFiltered[T2_Def::Accel::Sensor::FFT_SIZE_MAX];
+            memcpy(v_tempFiltered, v_out[i], p_len * sizeof(float));
 
-            // 1차 메디안 필터 적용
-            _applyMedianFilter(tempFiltered, _accDsp->median_hist[i], v_dsp.med_win, p_len);
+            // 1차 메디안 필터 임시 버퍼에 적용
+            _applyMedianFilter(v_tempFiltered, _accDsp->median_hist[i], v_dsp.med_win, p_len);
 
-            // 2차 메디안 필터 적용 (임계값 초과 데이터만)
+            // 2차 메디안 필터 적용 (임계값 초과 데이터만 1차 메디안 필터 출력값으로 대체)
             for (uint32_t j = 0; j < p_len; j++) {
-                if (fabsf(v_out[i][j]) > esdThresh) {
-                    v_out[i][j] = tempFiltered[j];
+                if (fabsf(v_out[i][j]) > v_esdThresh) {
+                    v_out[i][j] = v_tempFiltered[j];
                 }
             }
         }
 
-        // 노치 필터
+        // 노치 1차 필터 (바이쿼드 IIR 필터 방식
+        // 특정 협대역 주파수(예: 50/60Hz 전원 노이즈 또는 특정 기계적 공진 주파수)를 정밀하게 제거
         if (v_dsp.notch.en) {
             dsps_biquad_f32_aes3(v_out[i], v_out[i], p_len, _accDsp->notch_coeffs, _accDsp->notch_state[i]);
         }
-        // 노치2 필터
+        // 노치 2차 필터
         if (v_dsp.notch2.en) {
             dsps_biquad_f32_aes3(v_out[i], v_out[i], p_len, _accDsp->notch2_coeffs, _accDsp->notch2_state[i]);
         }
-        // IIR 하이패스 필터
+        
+        // IIR 하이패스 필터 : 저주파 드리프트(걷거나 흔들릴 때 발생하는 느린 중력 성분 변화)를 차단하여 순수한 동적 가속도만 추출
         if (v_dsp.iir_hpf.en) {
             dsps_biquad_f32_aes3(v_out[i], v_out[i], p_len, _accDsp->iir_hpf_coeffs, _accDsp->iir_hpf_state[i]);
         }
-        // IIR 로우패스 필터
+        // IIR 로우패스 필터 : 고주파 전기적 잡음이나 진동 노이즈를 제거하여 신호를 매끄럽게 만듦
         if (v_dsp.iir_lpf.en) {
             dsps_biquad_f32_aes3(v_out[i], v_out[i], p_len, _accDsp->iir_lpf_coeffs, _accDsp->iir_lpf_state[i]);
         }
@@ -656,31 +663,33 @@ void CL_T2_DspEngine::processAccel(const float* p_inX, const float* p_inY, const
             T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_lpf[i], v_out[i], v_out[i], p_len);
         }
 
-        // DC 제거
+        // DC 제거 2차 : 긴 필터 체인을 거치면서 연산 오차나 필터 과도 응답으로 인해 다시 DC 성분 제거
         if (v_dsp.rem_dc) {
             _removeDC(v_out[i], p_len);
         }
 
         // 힐버트 변환 진폭 포락선 추출 및 군지연 보정 (31차 FIR, 군지연 15)
         // 임시 버퍼 준비
-        alignas(16) float hilbertPhaseShift[T2_Def::Accel::Sensor::FFT_SIZE_MAX] = {0};
+        alignas(16) float v_hilbertPhaseShift[T2_Def::Accel::Sensor::FFT_SIZE_MAX] = {0};
         // 힐버트 변환
-        T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_hilbert[i], v_out[i], hilbertPhaseShift, p_len);
+        T2_40_Dsp_safe_dsps_fir_f32(&_accDsp->fir_inst_hilbert[i], v_out[i], v_hilbertPhaseShift, p_len);
 
         // 군지연 보정
-        const uint16_t delay = T2_Def::Accel::FeatureLimit::HILBERT_GROUP_DELAY;
+        const uint16_t v_delay = T2_Def::Accel::FeatureLimit::HILBERT_GROUP_DELAY;
+        
         // 진폭 포락선 추출
-        float* envDest = (i == 0) ? _accHilbertEnvX : ((i == 1) ? _accHilbertEnvY : _accHilbertEnvZ);
+        float* v_envDest = (i == 0) ? _accHilbertEnvX : ((i == 1) ? _accHilbertEnvY : _accHilbertEnvZ);
+        
         // 힐버트 변환 데이터에서 군지연만큼 지연된 원본 데이터와 90도 위상 변환된 데이터를 이용하여 진폭 포락선 추출
         for (uint32_t j = 0; j < p_len; j++) {
             // 군지연만큼 지연된 원본 데이터 인덱스 계산
-            int srcIdx = (int)j - (int)delay;
+            int v_srcIdx = (int)j - (int)v_delay;
             // 지연된 원본 데이터
-            float rawDelayed = (srcIdx >= 0) ? v_out[i][srcIdx] : 0.0f;
+            float v_rawDelayed = (v_srcIdx >= 0) ? v_out[i][v_srcIdx] : 0.0f;
             // 90도 위상 변환된 데이터
-            float shiftVal = hilbertPhaseShift[j];
+            float v_shiftVal = v_hilbertPhaseShift[j];
             // 진폭 포락선 계산
-            envDest[j] = sqrtf(rawDelayed * rawDelayed + shiftVal * shiftVal);
+            v_envDest[j] = sqrtf(v_rawDelayed * v_rawDelayed + v_shiftVal * v_shiftVal);
         }
     }
 }
@@ -770,7 +779,8 @@ void CL_T2_DspEngine::_calcNotchCoeffs(float p_freq, float p_q, float* p_coeffs,
     dsps_biquad_gen_notch_f32(p_coeffs, p_freq / (float)p_sampleRate, -60.0f, p_q);
 }
 
-// 대역 내 급격한 고주파 피크성 스파이크 노이즈를 제거하기 위해 삽입 정렬 기반의 1차원 메디안 필터를 구동 (p_data: 정규화 대상 데이터군, p_hist: 메디안 윈도우용 이력 데이터 배열, p_windowSize: 창 크기, p_len: 샘플 길이)
+// 대역 내 급격한 고주파 피크성 스파이크 노이즈를 제거하기 위해 삽입 정렬 기반의 1차원 메디안 필터를 구동 
+//   (p_data: 정규화 대상 데이터군, p_hist: 메디안 윈도우용 이력 데이터 배열, p_windowSize: 창 크기, p_len: 샘플 길이)
 void CL_T2_DspEngine::_applyMedianFilter(float* p_data, float* p_hist, uint8_t p_windowSize, uint32_t p_len) {
     uint8_t v_ws = p_windowSize;
     if (v_ws > T2_Def::Global::Dsp::MEDIAN_WINDOW_MAX)

@@ -572,6 +572,7 @@ uint16_t CL_T2_SensorEngine::accumulateFifo() {
     return (v_accCount > v_gyrCount) ? v_accCount : v_gyrCount;
 }
 
+
 // 내부 가속도 링버퍼로부터 지정한 샘플 개수만큼 순차 반환 인출합니다. (p_outX/Y/Z: 대상 버퍼군, p_reqCount: 요청 개수, 반환값: 실제 획득 개수)
 uint16_t CL_T2_SensorEngine::getAccumulatedAccel(float* p_outX, float* p_outY, float* p_outZ, uint16_t p_reqCount) {
     if (_accumCount == 0 || p_reqCount == 0) return 0;

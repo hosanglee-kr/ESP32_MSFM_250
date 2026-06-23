@@ -469,7 +469,7 @@ void CL_T2_FsmManager::_vibProcessTask(void* p_param) {
                 v_this->_sensor.getAccumulatedAccel(v_acc_proc_x, v_acc_proc_y, v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX);
                 v_this->_sensor.getAccumulatedGyro(v_gyr_proc_x, v_gyr_proc_y, v_gyr_proc_z, T2_Def::Gyro::Sensor::FFT_SIZE_MAX);
 
-                // 3. DSP 가공 및 특징 추출
+                // 3. DSP 가공 및 특징 추출 
 
                 // 가속도 특징 추출
                 if (v_cfg.accel.enable) {
