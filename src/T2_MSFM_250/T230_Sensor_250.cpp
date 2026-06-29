@@ -28,6 +28,7 @@ CL_T2_SensorEngine::CL_T2_SensorEngine(SPIClass& p_spiBus)
       _accumWriteIdx(0), _accumReadIdx(0), _accumCount(0),
       _accumGWriteIdx(0), _accumGReadIdx(0), _accumGCount(0) {
     _spiLock = xSemaphoreCreateMutex(); // [신규] SPI 락 생성
+
     memset(_audioDmaBuffer, 0, sizeof(_audioDmaBuffer));
     memset(_accumX, 0, sizeof(_accumX));
     memset(_accumY, 0, sizeof(_accumY));
@@ -45,65 +46,119 @@ bool CL_T2_SensorEngine::init(const T2_Type::ST_Global_System_t& p_sysCfg,
                               const T2_Type::ST_Audio_Config_t& p_audCfg) {
     bool v_success = true;
 
-    // [처리 단위 1] BMI270 SPI 드라이버 및 레지스터 설정 초기화
+    // [처리 단위 1-1] BMI270 SPI 드라이버 및 레지스터 설정 초기화
     bool v_needsBmi = (p_accCfg.enable || p_gyrCfg.enable);
     if (v_needsBmi && !_isBmiInit) {
 
+        // [처리 단위 1-2] SPI 통신 연결 및 전원 관리
         int8_t v_rslt = _bmi.beginSPI(
             Imu::Hardware::PIN_CS_CONST,
             Imu::Hardware::SPI_FREQ_HZ_CONST,
             _spi
         );
 
+        // [처리 단위 1-3] 드라이버 초기화 성공 여부 확인 및 에러 처리
         if (v_rslt != BMI2_OK) {
             ESP_LOGE(TAG, "BMI270 SPI Init Failed (Code: %d)", v_rslt);
             strlcpy(_statusText, "BMI_ERR", sizeof(_statusText));
             v_success = false;
         } else {
+            // [처리 단위 1-4] LSB to G/DPS 변환 계수 및 핀 설정
             _accelRange     = p_accCfg.range;
             _gyroRange      = p_gyrCfg.range;
+
+            // [처리 단위 1-5] 축 선택 및 자이로 구동 여부 결정
             _accelAxisMask  = p_accCfg.axis_mask;
             _gyroAxisMask   = p_gyrCfg.axis_mask;
+
+            // [처리 단위 1-6] 자이로 구동 여부
             _gyroEnabled    = p_gyrCfg.enable;
 
+            // [처리 단위 1-7] LSB to G/DPS 변환 계수 및 핀 설정
             _lsbToG         = (float)_accelRange / 32768.0f;
             _lsbToDps       = (float)_gyroRange / 32768.0f;
 
+            // [처리 단위 1-8] IMU 인터럽트 핀 설정
             pinMode(Imu::Hardware::PIN_INT1_WATERMARK_CONST, INPUT);
 
+            // [처리 단위 1-9] 가속도계(ACC) 설정 적용
             if (p_accCfg.enable) {
                 bmi2_sens_config v_accelConfig;
+
+                // [처리 단위 1-9-1] 센서 타입 지정
                 v_accelConfig.type                = BMI2_ACCEL;
+
+                // [처리 단위 1-9-2] 센서 데이터 전송률 설정
                 v_accelConfig.cfg.acc.odr         = p_accCfg.odr;
+
+                // [처리 단위 1-9-3] 센서 데이터 대역폭 설정
                 v_accelConfig.cfg.acc.bwp         = p_accCfg.bwp;
+                
+                // [처리 단위 1-9-4] 센서 데이터 필터 성능 설정
                 v_accelConfig.cfg.acc.filter_perf = p_accCfg.filter_perf;
+                
+                // [처리 단위 1-9-5] 센서 데이터 측정 범위 설정
                 v_accelConfig.cfg.acc.range       = _mapAccelRange(p_accCfg.range);
+
+                // [처리 단위 1-9-6] 센서 설정 적용
                 _bmi.setConfig(v_accelConfig);
             }
 
             if (_gyroEnabled) {
+                // [처리 단위 1-10] 자이로(GYR) 설정 적용
                 bmi2_sens_config v_gyroConfig;
+
+                // [처리 단위 1-10-1] 센서 타입 지정
                 v_gyroConfig.type               = BMI2_GYRO;
+
+                // [처리 단위 1-10-2] 센서 데이터 전송률 설정
                 v_gyroConfig.cfg.gyr.odr        = p_gyrCfg.odr;
+
+                // [처리 단위 1-10-3] 센서 데이터 대역폭 설정
                 v_gyroConfig.cfg.gyr.bwp        = p_gyrCfg.bwp;
+
+                // [처리 단위 1-10-4] 센서 데이터 필터 성능 설정
                 v_gyroConfig.cfg.gyr.filter_perf= p_gyrCfg.filter_perf;
+
+                // [처리 단위 1-10-5] 센서 노이즈 성능 설정
                 v_gyroConfig.cfg.gyr.noise_perf = p_gyrCfg.noise_perf;
+                
+                // [처리 단위 1-10-6] 센서 측정 범위 설정
                 v_gyroConfig.cfg.gyr.range      = _mapGyroRange(p_gyrCfg.range);
+                
+                // [처리 단위 1-10-7] 센서 설정 적용
                 _bmi.setConfig(v_gyroConfig);
             }
 
+            // [처리 단위 1-11] FIFO(데이터 저장소) 설정 적용
             BMI270_FIFOConfig v_fifoConfig;
-            v_fifoConfig.flags = 0;
-            if (p_accCfg.enable) v_fifoConfig.flags |= BMI2_FIFO_ACC_EN;
-            if (_gyroEnabled)    v_fifoConfig.flags |= BMI2_FIFO_GYR_EN;
 
+            // [처리 단위 1-11-1] 센서 데이터 플래그 설정
+            v_fifoConfig.flags = 0;
+            
+            // 가속도계 설정
+            if (p_accCfg.enable) v_fifoConfig.flags |= BMI2_FIFO_ACC_EN;
+            
+            // 자이로 설정
+            if (p_gyrCfg.enable)    v_fifoConfig.flags |= BMI2_FIFO_GYR_EN;
+
+            // [처리 단위 1-11-2] FIFO 워터마크 설정
             v_fifoConfig.watermark   = p_accCfg.fifo_watermark;
+
+            // [처리 단위 1-11-3] 센서 필터 성능 설정
             v_fifoConfig.accelFilter = BMI2_ENABLE;
             v_fifoConfig.gyroFilter  = BMI2_ENABLE;
+            
+            // [처리 단위 1-11-4] 센서 설정 적용
             _bmi.setFIFOConfig(v_fifoConfig);
 
+            // [처리 단위 1-11-5] 상태 플래그 설정
             _isBmiInit = true;
+
+            // [처리 단위 1-11-6] 가속도 캘리브레이션 적용
             applyStoredAccelCalibration();
+
+            // [처리 단위 1-11-7] 자이로 캘리브레이션 적용
             applyStoredGyroCalibration();
             ESP_LOGI(TAG, "IMU Domain Initialized (Acc:%d, Gyr:%d)", p_accCfg.enable, _gyroEnabled);
         }
@@ -111,6 +166,7 @@ bool CL_T2_SensorEngine::init(const T2_Type::ST_Global_System_t& p_sysCfg,
 
     // [처리 단위 2] ICS43434 I2S 오디오 드라이버 설치 및 인터럽트 핀 설정
     if (p_audCfg.enable && !_isI2sInit) {
+        // [처리 단위 2-1] I2S 설정 구조체 초기화
         i2s_config_t v_i2sConfig = {
             .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
             .sample_rate          = p_audCfg.sample_rate,
@@ -124,6 +180,7 @@ bool CL_T2_SensorEngine::init(const T2_Type::ST_Global_System_t& p_sysCfg,
             .tx_desc_auto_clear   = false,
             .fixed_mclk           = 0};
 
+        // [처리 단위 2-2] I2S 핀 설정 구조체 초기화
         i2s_pin_config_t v_pinConfig = {
             .bck_io_num = Audio::Hardware::PIN_I2S_BCLK_CONST,
             .ws_io_num = Audio::Hardware::PIN_I2S_WS_CONST,
@@ -131,11 +188,13 @@ bool CL_T2_SensorEngine::init(const T2_Type::ST_Global_System_t& p_sysCfg,
             .data_in_num = Audio::Hardware::PIN_I2S_DIN_CONST
         };
 
+        // [처리 단위 2-3] I2S 드라이버 설치
         if (i2s_driver_install((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST, &v_i2sConfig, 0, NULL) != ESP_OK) {
             ESP_LOGE(TAG, "I2S driver install failed");
             strlcpy(_statusText, "I2S_ERR", sizeof(_statusText));
             v_success = false;
         } else {
+            // [처리 단위 2-4] I2S 핀 설정
             if (i2s_set_pin((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST, &v_pinConfig) != ESP_OK) {
                 ESP_LOGE(TAG, "I2S pin config failed");
                 strlcpy(_statusText, "I2S_PIN_ERR", sizeof(_statusText));
@@ -203,37 +262,50 @@ void CL_T2_SensorEngine::clearAudioBuffer() {
 uint32_t CL_T2_SensorEngine::readAudioChunk(float* p_outL, float* p_outR, uint32_t p_reqSamples) {
     if (!_isI2sInit || _isPaused) return 0;
 
+    // 샘플 수 제한
     uint32_t v_samplesToRead = (p_reqSamples > Audio::Sensor::FFT_SIZE_MAX) ?
                                Audio::Sensor::FFT_SIZE_MAX : p_reqSamples;
+    
+    // 바이트 수 계산
     size_t v_bytesRead = 0;
     size_t v_bytesToRead = v_samplesToRead * 2 * sizeof(int32_t);
 
+    // I2S 데이터 읽기
     esp_err_t v_res = i2s_read((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST, _audioDmaBuffer, v_bytesToRead, &v_bytesRead, portMAX_DELAY);
     if (v_res != ESP_OK) return 0;
 
+    // 읽은 바이트 수를 샘플 수로 변환
     uint32_t v_samplesRead = v_bytesRead / (2 * sizeof(int32_t));
 
-    // [처리 단위 1] 마스크 정보에 따른 채널 분배
+    // 스테레오 여부 판단
     bool hasLeft  = ((uint8_t)_audioChannelMask & (uint8_t)T2_Type::EM_ChannelMask_t::CH_LEFT);
     bool hasRight = ((uint8_t)_audioChannelMask & (uint8_t)T2_Type::EM_ChannelMask_t::CH_RIGHT);
     bool isStereo = hasLeft && hasRight;
 
+    // 스테레오/모노 분배 처리
     if (isStereo) {
+        // 스테레오 처리
         for (uint32_t i = 0; i < v_samplesRead; i++) {
+            // 32비트 PCM 데이터를 float로 변환
             p_outL[i] = (float)_audioDmaBuffer[i * 2]     * Audio::Hardware::PCM_32BIT_SCALE_CONST;
             p_outR[i] = (float)_audioDmaBuffer[i * 2 + 1] * Audio::Hardware::PCM_32BIT_SCALE_CONST;
         }
     } else if (hasLeft) {
+        // 모노 왼쪽 처리
         for (uint32_t i = 0; i < v_samplesRead; i++) {
+            // 32비트 PCM 데이터를 float로 변환
             p_outL[i] = (float)_audioDmaBuffer[i * 2] * Audio::Hardware::PCM_32BIT_SCALE_CONST;
             p_outR[i] = 0.0f;
         }
     } else if (hasRight) {
+        // 모노 오른쪽 처리
         for (uint32_t i = 0; i < v_samplesRead; i++) {
-            p_outL[i] = (float)_audioDmaBuffer[i * 2 + 1] * Audio::Hardware::PCM_32BIT_SCALE_CONST;
-            p_outR[i] = 0.0f;
+            // 32비트 PCM 데이터를 float로 변환
+            p_outL[i] = 0.0f;
+            p_outR[i] = (float)_audioDmaBuffer[i * 2 + 1] * Audio::Hardware::PCM_32BIT_SCALE_CONST;
         }
     } else {
+        // 채널 없음
         memset(p_outL, 0, v_samplesRead * sizeof(float));
         memset(p_outR, 0, v_samplesRead * sizeof(float));
     }
@@ -247,38 +319,58 @@ uint16_t CL_T2_SensorEngine::readVibFifoBatch(float* p_accX, float* p_accY, floa
                                           uint16_t p_maxFrames) {
     if (!_isBmiInit || _isPaused) return 0;
 
+    // FIFO 버퍼 길이 읽기
     uint8_t v_lenBuf[2] = {0};
     if (!_readRegs(Imu::Hardware::REG_FIFO_LEN_ADDR_CONST, v_lenBuf, 2)) return 0;
 
+    // FIFO 버퍼 바이트 수 계산
     uint16_t v_fifoBytes = (v_lenBuf[1] << 8) | v_lenBuf[0];
+    
+    // 사용 가능한 프레임 수 계산
     uint16_t v_availFrames = v_fifoBytes / Imu::Hardware::FIFO_FRAME_SIZE_CONST;
 
+    // 사용 가능한 프레임이 없으면 0 반환
     if (v_availFrames == 0) return 0;
 
+    // 읽을 프레임 수 계산
     uint16_t v_framesToRead = (v_availFrames > p_maxFrames) ? p_maxFrames : v_availFrames;
+    
+    // 읽을 바이트 수 계산
     uint16_t v_bytesToRead = v_framesToRead * Imu::Hardware::FIFO_FRAME_SIZE_CONST;
 
+    // FIFO 데이터 버퍼 할당
     uint8_t v_fifoData[Imu::Hardware::FIFO_BATCH_SIZE_MAX * Imu::Hardware::FIFO_FRAME_SIZE_CONST];
+
+    // 읽을 바이트 수 제한
     if (v_bytesToRead > sizeof(v_fifoData)) v_bytesToRead = sizeof(v_fifoData);
 
+    // FIFO 데이터 읽기
     if (!_readRegs(Imu::Hardware::REG_FIFO_DATA_ADDR_CONST, v_fifoData, v_bytesToRead)) return 0;
 
-    uint16_t v_accCount = 0;
-    uint16_t v_gyrCount = 0;
-    uint16_t v_idx = 0;
+    // 가속도 카운터 및 자이로 카운터 초기화
+    uint16_t v_accCount = 0;    // 가속도 카운터
+    uint16_t v_gyrCount = 0;    // 자이로 카운터
+    uint16_t v_idx = 0;         // 인덱스
 
-    // [처리 단위 1] FIFO 버스트 바이트 파싱 루프
+    // 버스트 바이트 파싱 루프
     while (v_idx + (Imu::Hardware::FIFO_FRAME_SIZE_CONST - 1) < v_bytesToRead &&
            (v_accCount < v_framesToRead || v_gyrCount < v_framesToRead)) {
+        
+        // 헤더 읽기
         uint8_t v_header = v_fifoData[v_idx];
 
+        // 가속도 데이터 파싱
         if (v_header == Imu::Hardware::FIFO_HEADER_ACCEL_CONST) {
             v_idx++;
+
+            // 가속도 데이터 리틀 엔디안 변환
             int16_t v_rawX = (int16_t)((v_fifoData[v_idx + 1] << 8) | v_fifoData[v_idx]);
             int16_t v_rawY = (int16_t)((v_fifoData[v_idx + 3] << 8) | v_fifoData[v_idx + 2]);
             int16_t v_rawZ = (int16_t)((v_fifoData[v_idx + 5] << 8) | v_fifoData[v_idx + 4]);
 
+            // 가속도 데이터 저장
             if (v_accCount < p_maxFrames) {
+                // 비트 플립, 바이어스 및 게인 보정
                 float v_valX = (_accelAxisMask & (1 << 0)) ? (((float)v_rawX * _lsbToG - _accOffsetX) * _accGainX) : 0.0f;
                 float v_valY = (_accelAxisMask & (1 << 1)) ? (((float)v_rawY * _lsbToG - _accOffsetY) * _accGainY) : 0.0f;
                 float v_valZ = (_accelAxisMask & (1 << 2)) ? (((float)v_rawZ * _lsbToG - _accOffsetZ) * _accGainZ) : 0.0f;
@@ -288,19 +380,24 @@ uint16_t CL_T2_SensorEngine::readVibFifoBatch(float* p_accX, float* p_accY, floa
                 if (fabsf(v_valY) > (float)_accelRange * 1.5f) v_valY = _lastAccY; else _lastAccY = v_valY;
                 if (fabsf(v_valZ) > (float)_accelRange * 1.5f) v_valZ = _lastAccZ; else _lastAccZ = v_valZ;
 
+                // 가속도 데이터 저장
                 p_accX[v_accCount] = v_valX;
                 p_accY[v_accCount] = v_valY;
                 p_accZ[v_accCount] = v_valZ;
                 v_accCount++;
             }
             v_idx += 6;
+        // 자이로 데이터 파싱
         } else if (v_header == Imu::Hardware::FIFO_HEADER_GYRO_CONST) {
             v_idx++;
+            // 자이로 데이터 리틀 엔디안 변환
             int16_t v_rawGX = (int16_t)((v_fifoData[v_idx + 1] << 8) | v_fifoData[v_idx]);
             int16_t v_rawGY = (int16_t)((v_fifoData[v_idx + 3] << 8) | v_fifoData[v_idx + 2]);
             int16_t v_rawGZ = (int16_t)((v_fifoData[v_idx + 5] << 8) | v_fifoData[v_idx + 4]);
 
+            // 자이로 데이터 저장
             if (_gyroEnabled && v_gyrCount < p_maxFrames) {
+                // 비트 플립, 바이어스 및 게인 보정
                 float v_valGX = (_gyroAxisMask & (1 << 0)) ? (((float)v_rawGX * _lsbToDps - _gyrOffsetX) * _gyrGainX) : 0.0f;
                 float v_valGY = (_gyroAxisMask & (1 << 1)) ? (((float)v_rawGY * _lsbToDps - _gyrOffsetY) * _gyrGainY) : 0.0f;
                 float v_valGZ = (_gyroAxisMask & (1 << 2)) ? (((float)v_rawGZ * _lsbToDps - _gyrOffsetZ) * _gyrGainZ) : 0.0f;
@@ -310,67 +407,92 @@ uint16_t CL_T2_SensorEngine::readVibFifoBatch(float* p_accX, float* p_accY, floa
                 if (fabsf(v_valGY) > (float)_gyroRange * 1.5f) v_valGY = _lastGyrY; else _lastGyrY = v_valGY;
                 if (fabsf(v_valGZ) > (float)_gyroRange * 1.5f) v_valGZ = _lastGyrZ; else _lastGyrZ = v_valGZ;
 
+                // 자이로 데이터 저장
                 p_gyrX[v_gyrCount] = v_valGX;
                 p_gyrY[v_gyrCount] = v_valGY;
                 p_gyrZ[v_gyrCount] = v_valGZ;
                 v_gyrCount++;
             }
             v_idx += 6;
+        // 헤더가 가속도와 자이로가 아니면
         } else {
             v_idx++;
         }
     }
 
+    // 가속도 프레임 수와 자이로 프레임 수 중 큰 값을 반환
     return (v_accCount > v_gyrCount) ? v_accCount : v_gyrCount;
 }
 
-// 주기적으로 FIFO를 읽어 가속도 및 자이로 링버퍼에 비동기 누적 적재합니다. (반환값: 누적시킨 프레임 수)
+// 주기적으로 FIFO를 읽어 가속도 및 자이로 링버퍼에 비동기 누적 적재 (반환값: 누적시킨 프레임 수)
 uint16_t CL_T2_SensorEngine::accumulateFifo() {
     if (!_isBmiInit || _isPaused) return 0;
 
+    // ????
     uint8_t v_lenBuf[2] = {0};
     if (!_readRegs(Imu::Hardware::REG_FIFO_LEN_ADDR_CONST, v_lenBuf, 2)) return 0;
 
+    // FIFO 버퍼 바이트 수 계산
     uint16_t v_fifoBytes = (v_lenBuf[1] << 8) | v_lenBuf[0];
+    
+    // 사용 가능한 프레임 수 계산
     uint16_t v_availFrames = v_fifoBytes / Imu::Hardware::FIFO_FRAME_SIZE_CONST;
 
+    // 사용 가능한 프레임이 없으면 0 반환
     if (v_availFrames == 0) return 0;
 
+    // 한 번에 읽을 최대 프레임 수 제한
     uint16_t v_framesToRead = (v_availFrames > Imu::Hardware::FIFO_BATCH_SIZE_MAX) ? Imu::Hardware::FIFO_BATCH_SIZE_MAX : v_availFrames;
+    
+    // 읽을 바이트 수 계산
     uint16_t v_bytesToRead = v_framesToRead * Imu::Hardware::FIFO_FRAME_SIZE_CONST;
 
+    // 임시 FIFO 데이터 버퍼
     uint8_t v_fifoData[Imu::Hardware::FIFO_BATCH_SIZE_MAX * Imu::Hardware::FIFO_FRAME_SIZE_CONST];
+
+    // 읽을 바이트 수 제한
     if (v_bytesToRead > sizeof(v_fifoData)) v_bytesToRead = sizeof(v_fifoData);
 
+    // FIFO 데이터 읽기
     if (!_readRegs(Imu::Hardware::REG_FIFO_DATA_ADDR_CONST, v_fifoData, v_bytesToRead)) return 0;
 
+    // 가속도 카운터 및 자이로 카운터 초기화
     uint16_t v_accCount = 0;
     uint16_t v_gyrCount = 0;
     uint16_t v_idx = 0;
 
+    // FFT 사이즈 상수
     const uint16_t ACC_BUF_SIZE = Accel::Sensor::FFT_SIZE_MAX;
     const uint16_t GYR_BUF_SIZE = Gyro::Sensor::FFT_SIZE_MAX;
 
-    // [처리 단위 1] 데이터 파싱 및 축별 링버퍼 적재
+    // 데이터 파싱 및 축별 링버퍼 적재
     while (v_idx + (Imu::Hardware::FIFO_FRAME_SIZE_CONST - 1) < v_bytesToRead &&
            (v_accCount < v_framesToRead || v_gyrCount < v_framesToRead)) {
+        
+        // 헤더 읽기
         uint8_t v_header = v_fifoData[v_idx];
 
+        // 가속도 데이터 파싱
         if (v_header == Imu::Hardware::FIFO_HEADER_ACCEL_CONST) {
             v_idx++;
+            // 가속도 데이터 저장
             if (v_accCount < v_framesToRead) {
+                // X, Y, Z축 데이터 초기화
                 float v_valX = 0.0f;
                 float v_valY = 0.0f;
                 float v_valZ = 0.0f;
 
+                // X축 데이터 파싱
                 if (_accelAxisMask & (1 << 0)) {
                     int16_t v_rawX = (int16_t)((v_fifoData[v_idx + 1] << 8) | v_fifoData[v_idx]);
                     v_valX = ((float)v_rawX * _lsbToG - _accOffsetX) * _accGainX;
                 }
+                // Y축 데이터 파싱
                 if (_accelAxisMask & (1 << 1)) {
                     int16_t v_rawY = (int16_t)((v_fifoData[v_idx + 3] << 8) | v_fifoData[v_idx + 2]);
                     v_valY = ((float)v_rawY * _lsbToG - _accOffsetY) * _accGainY;
                 }
+                // Z축 데이터 파싱
                 if (_accelAxisMask & (1 << 2)) {
                     int16_t v_rawZ = (int16_t)((v_fifoData[v_idx + 5] << 8) | v_fifoData[v_idx + 4]);
                     v_valZ = ((float)v_rawZ * _lsbToG - _accOffsetZ) * _accGainZ;
@@ -381,10 +503,12 @@ uint16_t CL_T2_SensorEngine::accumulateFifo() {
                 if (fabsf(v_valY) > (float)_accelRange * 1.5f) v_valY = _lastAccY; else _lastAccY = v_valY;
                 if (fabsf(v_valZ) > (float)_accelRange * 1.5f) v_valZ = _lastAccZ; else _lastAccZ = v_valZ;
 
+                // 가속도 데이터 링버퍼에 저장
                 _accumX[_accumWriteIdx] = v_valX;
                 _accumY[_accumWriteIdx] = v_valY;
                 _accumZ[_accumWriteIdx] = v_valZ;
 
+                // 쓰기 인덱스 증가
                 _accumWriteIdx = (_accumWriteIdx + 1) % ACC_BUF_SIZE;
                 if (_accumCount < ACC_BUF_SIZE) {
                     _accumCount++;
@@ -394,21 +518,27 @@ uint16_t CL_T2_SensorEngine::accumulateFifo() {
                 v_accCount++;
             }
             v_idx += 6;
+        // 자이로 데이터 파싱
         } else if (v_header == Imu::Hardware::FIFO_HEADER_GYRO_CONST) {
             v_idx++;
+            // 자이로 데이터 저장
             if (_gyroEnabled && v_gyrCount < v_framesToRead) {
+                // X, Y, Z축 데이터 초기화
                 float v_valGX = 0.0f;
                 float v_valGY = 0.0f;
                 float v_valGZ = 0.0f;
 
+                // X축 데이터 파싱
                 if (_gyroAxisMask & (1 << 0)) {
                     int16_t v_rawGX = (int16_t)((v_fifoData[v_idx + 1] << 8) | v_fifoData[v_idx]);
                     v_valGX = ((float)v_rawGX * _lsbToDps - _gyrOffsetX) * _gyrGainX;
                 }
+                // Y축 데이터 파싱
                 if (_gyroAxisMask & (1 << 1)) {
                     int16_t v_rawGY = (int16_t)((v_fifoData[v_idx + 3] << 8) | v_fifoData[v_idx + 2]);
                     v_valGY = ((float)v_rawGY * _lsbToDps - _gyrOffsetY) * _gyrGainY;
                 }
+                // Z축 데이터 파싱
                 if (_gyroAxisMask & (1 << 2)) {
                     int16_t v_rawGZ = (int16_t)((v_fifoData[v_idx + 5] << 8) | v_fifoData[v_idx + 4]);
                     v_valGZ = ((float)v_rawGZ * _lsbToDps - _gyrOffsetZ) * _gyrGainZ;
@@ -419,10 +549,12 @@ uint16_t CL_T2_SensorEngine::accumulateFifo() {
                 if (fabsf(v_valGY) > (float)_gyroRange * 1.5f) v_valGY = _lastGyrY; else _lastGyrY = v_valGY;
                 if (fabsf(v_valGZ) > (float)_gyroRange * 1.5f) v_valGZ = _lastGyrZ; else _lastGyrZ = v_valGZ;
 
+                // 자이로 데이터 링버퍼에 저장
                 _accumGX[_accumGWriteIdx] = v_valGX;
                 _accumGY[_accumGWriteIdx] = v_valGY;
                 _accumGZ[_accumGWriteIdx] = v_valGZ;
 
+                // 쓰기 인덱스 증가
                 _accumGWriteIdx = (_accumGWriteIdx + 1) % GYR_BUF_SIZE;
                 if (_accumGCount < GYR_BUF_SIZE) {
                     _accumGCount++;
@@ -440,17 +572,25 @@ uint16_t CL_T2_SensorEngine::accumulateFifo() {
     return (v_accCount > v_gyrCount) ? v_accCount : v_gyrCount;
 }
 
+
 // 내부 가속도 링버퍼로부터 지정한 샘플 개수만큼 순차 반환 인출합니다. (p_outX/Y/Z: 대상 버퍼군, p_reqCount: 요청 개수, 반환값: 실제 획득 개수)
 uint16_t CL_T2_SensorEngine::getAccumulatedAccel(float* p_outX, float* p_outY, float* p_outZ, uint16_t p_reqCount) {
     if (_accumCount == 0 || p_reqCount == 0) return 0;
 
+    // 복사할 데이터 개수 계산
     uint16_t v_toCopy = (p_reqCount > _accumCount) ? _accumCount : p_reqCount;
+
+    // 버퍼 크기
     const uint16_t BUFFER_SIZE = Accel::Sensor::FFT_SIZE_MAX;
 
+    // 데이터 복사
     for (uint16_t i = 0; i < v_toCopy; i++) {
+        // 인덱스 계산
         p_outX[i] = _accumX[_accumReadIdx];
         p_outY[i] = _accumY[_accumReadIdx];
         p_outZ[i] = _accumZ[_accumReadIdx];
+        
+        // 읽기 인덱스 증가
         _accumReadIdx = (_accumReadIdx + 1) % BUFFER_SIZE;
         _accumCount--;
     }
@@ -462,13 +602,20 @@ uint16_t CL_T2_SensorEngine::getAccumulatedAccel(float* p_outX, float* p_outY, f
 uint16_t CL_T2_SensorEngine::getAccumulatedGyro(float* p_outX, float* p_outY, float* p_outZ, uint16_t p_reqCount) {
     if (_accumGCount == 0 || p_reqCount == 0) return 0;
 
+    // 복사할 데이터 개수 계산
     uint16_t v_toCopy = (p_reqCount > _accumGCount) ? _accumGCount : p_reqCount;
+
+    // 버퍼 크기
     const uint16_t BUFFER_SIZE = Gyro::Sensor::FFT_SIZE_MAX;
 
+    // 데이터 복사
     for (uint16_t i = 0; i < v_toCopy; i++) {
+        // 인덱스 계산
         p_outX[i] = _accumGX[_accumGReadIdx];
         p_outY[i] = _accumGY[_accumGReadIdx];
         p_outZ[i] = _accumGZ[_accumGReadIdx];
+
+        // 읽기 인덱스 증가
         _accumGReadIdx = (_accumGReadIdx + 1) % BUFFER_SIZE;
         _accumGCount--;
     }
@@ -481,20 +628,34 @@ bool CL_T2_SensorEngine::runAccelCalibration() {
     if (!_isBmiInit) return false;
     ESP_LOGI(TAG, "Starting BMI270 Accel Calibration (HW Retrim + Soft Offset)...");
 
+    // HW 리트림 수행
     _bmi.performComponentRetrim();
+    // Soft Offset 보정 수행
     _bmi.performAccelOffsetCalibration(BMI2_GRAVITY_POS_Z);
 
+    // 보정 데이터를 저장하기 위한 버퍼
     float dAccX[100], dAccY[100], dAccZ[100];
     float dGyrX[100], dGyrY[100], dGyrZ[100];
+    
+    // 가속도 및 자이로 데이터 읽기
     readVibFifoBatch(dAccX, dAccY, dAccZ, dGyrX, dGyrY, dGyrZ, 100);
 
+    // 가속도 및 자이로 데이터 합계를 저장할 변수
     float v_sumX = 0, v_sumY = 0, v_sumZ = 0;
+    
+    // 샘플 개수
     uint16_t v_samples = 0;
+    // 목표 샘플 개수
     const uint16_t TARGET_SAMPLES = Accel::Calib::TARGET_SAMPLES_DEF;
 
+    // 보정 루프
     for (int i = 0; i < Accel::Calib::RETRY_MAX_CONST && v_samples < TARGET_SAMPLES; i++) {
+        // 지연
         vTaskDelay(pdMS_TO_TICKS(Accel::Calib::LOOP_DELAY_MS_CONST));
+
+        // 가속도 및 자이로 데이터 읽기
         uint16_t v_count = readVibFifoBatch(dAccX, dAccY, dAccZ, dGyrX, dGyrY, dGyrZ, TARGET_SAMPLES - v_samples);
+        // 데이터 합계 계산
         for (uint16_t j = 0; j < v_count; j++) {
             v_sumX += (dAccX[j] / _accGainX) + _accOffsetX;
             v_sumY += (dAccY[j] / _accGainY) + _accOffsetY;
@@ -503,22 +664,35 @@ bool CL_T2_SensorEngine::runAccelCalibration() {
         }
     }
 
+    // 데이터가 충분하지 않으면 실패
     if (v_samples < TARGET_SAMPLES / 2) return false;
 
+    // 가속도 오프셋 계산
     _accOffsetX = v_sumX / v_samples;
     _accOffsetY = v_sumY / v_samples;
     _accOffsetZ = (v_sumZ / v_samples) - 1.0f;
+    
+    // 가속도 게인 설정
     _accGainX = 1.0f; _accGainY = 1.0f; _accGainZ = 1.0f;
 
+    // JSON 문서 생성
     JsonDocument v_doc;
+    // 오프셋 배열 생성
     JsonArray v_offArr = v_doc["offset"].to<JsonArray>();
+    // 오프셋 추가
     v_offArr.add(_accOffsetX); v_offArr.add(_accOffsetY); v_offArr.add(_accOffsetZ);
+    // 게인 배열 생성
     JsonArray v_gainArr = v_doc["gain"].to<JsonArray>();
+    // 게인 추가
     v_gainArr.add(_accGainX); v_gainArr.add(_accGainY); v_gainArr.add(_accGainZ);
 
+    // 캘리브레이션 파일 열기
     File v_file = LittleFS.open(Accel::Calib::FILE_JSON_CONST, "w");
+    // 파일 열기 성공 시
     if (v_file) {
+        // JSON 데이터 쓰기
         serializeJson(v_doc, v_file);
+        // 파일 닫기
         v_file.close();
         ESP_LOGI(TAG, "Accel Calibration Saved: Off(%.3f, %.3f, %.3f)", _accOffsetX, _accOffsetY, _accOffsetZ);
         return true;
@@ -528,22 +702,34 @@ bool CL_T2_SensorEngine::runAccelCalibration() {
 
 // 자이로 센서의 HW 리트림 자가 교정을 수행하고 산출된 소프트웨어 오프셋 편차를 플래시 파일에 저장합니다. (반환값: 성공 여부)
 bool CL_T2_SensorEngine::runGyroCalibration() {
+    // BMI270 초기화 여부 및 자이로 활성화 여부 확인
     if (!_isBmiInit || !_gyroEnabled) return false;
+    // 자이로 캘리브레이션 시작 로그
     ESP_LOGI(TAG, "Starting BMI270 Gyro Calibration...");
 
+    // 자이로 오프셋 보정 수행
     _bmi.performGyroOffsetCalibration();
 
+    // 가속도 및 자이로 데이터 버퍼
     float dAccX[200], dAccY[200], dAccZ[200];
     float dGyrX[200], dGyrY[200], dGyrZ[200];
+    // 가속도 및 자이로 데이터 읽기
     readVibFifoBatch(dAccX, dAccY, dAccZ, dGyrX, dGyrY, dGyrZ, 200);
 
+    // 가속도 및 자이로 데이터 합계를 저장할 변수
     float v_sumX = 0, v_sumY = 0, v_sumZ = 0;
     uint16_t v_samples = 0;
+    // 목표 샘플 개수
     const uint16_t TARGET_SAMPLES = Gyro::Calib::TARGET_SAMPLES_DEF;
 
+    // 캘리브레이션 루프
     for (int i = 0; i < Gyro::Calib::RETRY_MAX_CONST && v_samples < TARGET_SAMPLES; i++) {
+        // 지연
         vTaskDelay(pdMS_TO_TICKS(Gyro::Calib::LOOP_DELAY_MS_CONST));
+
+        // 가속도 및 자이로 데이터 읽기
         uint16_t v_count = readVibFifoBatch(dAccX, dAccY, dAccZ, dGyrX, dGyrY, dGyrZ, TARGET_SAMPLES - v_samples);
+        // 데이터 합계 계산
         for (uint16_t j = 0; j < v_count; j++) {
             v_sumX += (dGyrX[j] / _gyrGainX) + _gyrOffsetX;
             v_sumY += (dGyrY[j] / _gyrGainY) + _gyrOffsetY;
@@ -552,22 +738,33 @@ bool CL_T2_SensorEngine::runGyroCalibration() {
         }
     }
 
+    // 데이터가 충분하지 않으면 실패
     if (v_samples < TARGET_SAMPLES / 2) return false;
 
+    // 자이로 오프셋 계산
     _gyrOffsetX = v_sumX / v_samples;
     _gyrOffsetY = v_sumY / v_samples;
     _gyrOffsetZ = v_sumZ / v_samples;
+    // 자이로 게인 설정
     _gyrGainX = 1.0f; _gyrGainY = 1.0f; _gyrGainZ = 1.0f;
 
     JsonDocument v_doc;
+    // 오프셋 배열 생성
     JsonArray v_offArr = v_doc["offset"].to<JsonArray>();
+    // 오프셋 추가
     v_offArr.add(_gyrOffsetX); v_offArr.add(_gyrOffsetY); v_offArr.add(_gyrOffsetZ);
+    // 게인 배열 생성
     JsonArray v_gainArr = v_doc["gain"].to<JsonArray>();
+    // 게인 추가
     v_gainArr.add(_gyrGainX); v_gainArr.add(_gyrGainY); v_gainArr.add(_gyrGainZ);
 
+    // 캘리브레이션 파일 열기
     File v_file = LittleFS.open(Gyro::Calib::FILE_JSON_CONST, "w");
+    // 파일 열기 성공 시
     if (v_file) {
+        // JSON 데이터 쓰기
         serializeJson(v_doc, v_file);
+        // 파일 닫기
         v_file.close();
         ESP_LOGI(TAG, "Gyro Calibration Saved: Off(%.3f, %.3f, %.3f)", _gyrOffsetX, _gyrOffsetY, _gyrOffsetZ);
         return true;
@@ -577,43 +774,55 @@ bool CL_T2_SensorEngine::runGyroCalibration() {
 
 // 플래시에서 로드한 가속도 캘리브레이션 JSON 데이터를 읽어와 센서 엔진 오프셋 변수에 적용합니다. (반환값: 복원 성공 여부)
 bool CL_T2_SensorEngine::applyStoredAccelCalibration() {
+    // 캘리브레이션 파일 존재 여부 확인
     if (!LittleFS.exists(Accel::Calib::FILE_JSON_CONST)) {
         _accOffsetX = 0; _accOffsetY = 0; _accOffsetZ = 0;
         _accGainX = 1.0f; _accGainY = 1.0f; _accGainZ = 1.0f;
         return false;
     }
+
+    // 캘리브레이션 파일 열기
     File v_file = LittleFS.open(Accel::Calib::FILE_JSON_CONST, "r");
     if (!v_file) return false;
 
     JsonDocument v_doc;
+    // JSON 데이터 역직렬화
     DeserializationError v_err = deserializeJson(v_doc, v_file);
     v_file.close();
 
     if (!v_err) {
+        // 오프셋 배열에서 데이터 읽기
         JsonArrayConst v_off = v_doc["offset"];
+        // 오프셋 데이터가 3개 이상이면
         if (v_off.size() >= 3) {
             _accOffsetX = v_off[0] | 0.0f;
             _accOffsetY = v_off[1] | 0.0f;
             _accOffsetZ = v_off[2] | 0.0f;
         }
+        // 게인 배열에서 데이터 읽기
         JsonArrayConst v_gain = v_doc["gain"];
+        // 게인 데이터가 3개 이상이면
         if (v_gain.size() >= 3) {
             _accGainX = v_gain[0] | 1.0f;
             _accGainY = v_gain[1] | 1.0f;
             _accGainZ = v_gain[2] | 1.0f;
         }
+        // 성공
         return true;
     }
+    // 실패
     return false;
 }
 
 // 플래시에서 로드한 자이로 캘리브레이션 JSON 데이터를 읽어와 센서 엔진 오프셋 변수에 적용합니다. (반환값: 복원 성공 여부)
 bool CL_T2_SensorEngine::applyStoredGyroCalibration() {
+    // 캘리브레이션 파일 존재 여부 확인
     if (!LittleFS.exists(Gyro::Calib::FILE_JSON_CONST)) {
         _gyrOffsetX = 0; _gyrOffsetY = 0; _gyrOffsetZ = 0;
         _gyrGainX = 1.0f; _gyrGainY = 1.0f; _gyrGainZ = 1.0f;
         return false;
     }
+    // 캘리브레이션 파일 열기
     File v_file = LittleFS.open(Gyro::Calib::FILE_JSON_CONST, "r");
     if (!v_file) return false;
 
@@ -622,44 +831,62 @@ bool CL_T2_SensorEngine::applyStoredGyroCalibration() {
     v_file.close();
 
     if (!v_err) {
+        // 오프셋 배열에서 데이터 읽기
         JsonArrayConst v_off = v_doc["offset"];
+        // 오프셋 데이터가 3개 이상이면
         if (v_off.size() >= 3) {
             _gyrOffsetX = v_off[0] | 0.0f;
             _gyrOffsetY = v_off[1] | 0.0f;
             _gyrOffsetZ = v_off[2] | 0.0f;
         }
+        // 게인 배열에서 데이터 읽기
         JsonArrayConst v_gain = v_doc["gain"];
+        // 게인 데이터가 3개 이상이면
         if (v_gain.size() >= 3) {
             _gyrGainX = v_gain[0] | 1.0f;
             _gyrGainY = v_gain[1] | 1.0f;
             _gyrGainZ = v_gain[2] | 1.0f;
         }
+        // 성공
         return true;
     }
+    // 실패
     return false;
 }
 
 // 지정한 움직임 감지 한계를 초과하면 INT2 핀으로 인터럽트 신호가 나가도록 BMI270에 모션 설정을 등록합니다. (p_threshG: 가속도 기준 G, p_duration: 최소 충족 틱 수, 반환값: 활성화 성공 여부)
 bool CL_T2_SensorEngine::enableWakeOnMotion(float p_threshG, uint16_t p_duration) {
+    // BMI270 초기화 여부 확인
     if (!_isBmiInit) return false;
 
-    pinMode(Imu::Hardware::PIN_INT2_MOTION_CONST, INPUT); // [추가] 물리 INT2 제어 전용선 선언
+    // 물리 INT2 제어 전용선 선언
+    pinMode(Imu::Hardware::PIN_INT2_MOTION_CONST, INPUT);
 
     bmi2_sens_config v_bmi2_config;
+    // 움직임 감지 설정
     v_bmi2_config.type = BMI2_ANY_MOTION;
+    // 최소 충족 틱 수
     v_bmi2_config.cfg.any_motion.duration = p_duration;
 
+    // LSB/mg 계산
     float v_lsbMg = Imu::Hardware::ANY_MOTION_LSB_2G_MG * ((float)_accelRange / 2.0f);
+    // 임계값 설정
     v_bmi2_config.cfg.any_motion.threshold = (uint16_t)(p_threshG * 1000.0f / v_lsbMg);
 
+    // X, Y, Z 축 모두 사용
     v_bmi2_config.cfg.any_motion.select_x = 1;
     v_bmi2_config.cfg.any_motion.select_y = 1;
     v_bmi2_config.cfg.any_motion.select_z = 1;
 
+    // SPI Lock
     xSemaphoreTake(_spiLock, portMAX_DELAY);
+    // 설정 적용
     _bmi.setConfig(v_bmi2_config);
-    _bmi.mapInterruptToPin(BMI2_ANY_MOTION_INT, BMI2_INT2); // [수정] Any-Motion 이벤트를 INT2 채널로 독립 출력 배치
+    // 인터럽트 핀 매핑
+    _bmi.mapInterruptToPin(BMI2_ANY_MOTION_INT, BMI2_INT2);
+    // SPI Unlock
     xSemaphoreGive(_spiLock);
+    // 성공
     return true;
 }
 
@@ -700,6 +927,18 @@ uint8_t CL_T2_SensorEngine::_readRegSingle(uint8_t p_reg) {
     return v_val;
 }
 
+// [신규] 단일 레지스터 쓰기 함수
+void CL_T2_SensorEngine::_writeRegSingle(uint8_t p_reg, uint8_t p_val) {
+    xSemaphoreTake(_spiLock, portMAX_DELAY);
+    _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
+    digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
+    _spi.transfer(p_reg & 0x7F);
+    _spi.transfer(p_val);
+    digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
+    _spi.endTransaction();
+    xSemaphoreGive(_spiLock);
+}
+
 // SPI 버스를 점유하여 센서 레지스터로부터 데이터를 버스트 수신합니다. (p_reg: 대상 레지스터 번호, p_data: 수신용 배열 버퍼, p_len: 크기 byte, 반환값: 성공 여부)
 bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_len) {
     // FIFO 데이터 읽기는 최우선 BURST(HIGH_BURST) 대상이므로 슬라이싱하지 않고 우회함.
@@ -708,7 +947,7 @@ bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_le
         uint16_t read = 0;
         while (read < p_len) {
             uint16_t chunk = (p_len - read > 16) ? 16 : (p_len - read);
-            
+
             xSemaphoreTake(_spiLock, portMAX_DELAY);
             _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
             digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
@@ -718,7 +957,7 @@ bool CL_T2_SensorEngine::_readRegs(uint8_t p_reg, uint8_t* p_data, uint16_t p_le
             digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
             _spi.endTransaction();
             xSemaphoreGive(_spiLock);
-            
+
             read += chunk;
             vTaskDelay(0); // 타스크 양보
         }
@@ -744,7 +983,7 @@ bool CL_T2_SensorEngine::_writeRegs(uint8_t p_reg, const uint8_t* p_data, uint16
         uint16_t sent = 0;
         while (sent < p_len) {
             uint16_t chunk = (p_len - sent > 16) ? 16 : (p_len - sent);
-            
+
             xSemaphoreTake(_spiLock, portMAX_DELAY);
             _spi.beginTransaction(SPISettings(Imu::Hardware::SPI_FREQ_HZ_CONST, MSBFIRST, SPI_MODE0));
             digitalWrite(Imu::Hardware::PIN_CS_CONST, LOW);
@@ -753,7 +992,7 @@ bool CL_T2_SensorEngine::_writeRegs(uint8_t p_reg, const uint8_t* p_data, uint16
             digitalWrite(Imu::Hardware::PIN_CS_CONST, HIGH);
             _spi.endTransaction();
             xSemaphoreGive(_spiLock);
-            
+
             sent += chunk;
             vTaskDelay(0); // 타스크 양보
         }
@@ -781,3 +1020,67 @@ float CL_T2_SensorEngine::readTemperatureSensor() {
     float v_tempC = (float)v_rawTemp / Imu::Hardware::TEMP_SCALE_CONST + Imu::Hardware::TEMP_OFFSET_CONST;
     return v_tempC;
 }
+
+// [신규] 하드웨어 FIFO 플러시
+void CL_T2_SensorEngine::flushHardwareFifo() {
+    if (!_isBmiInit) return;
+    _writeRegSingle(0x5E, 0xB0); // FIFO flush command write (0xB0 to CMD register 0x7E/0x5E)
+    vTaskDelay(pdMS_TO_TICKS(5));
+}
+
+// [신규] 딥슬립 Wake-up 설정
+void CL_T2_SensorEngine::prepareDeepSleepWakeup(float p_wakeG, uint16_t p_wakeDur) {
+    if (!_isBmiInit) return;
+    // 1. BMI270 Any-Motion 감지 레지스터 주파수 및 임계값 설정
+    _writeRegSingle(0x5F, 0x01); // Any-motion feature enable
+    float v_lsbMg = Imu::Hardware::ANY_MOTION_LSB_2G_MG * ((float)_accelRange / 2.0f);
+    uint8_t v_threshold = (uint8_t)(p_wakeG * 1000.0f / v_lsbMg);
+    _writeRegSingle(0x60, v_threshold); // Threshold write
+
+    // Duration 설정 (30~45번 라인 등 Any-Motion 상세 명세에 맞춘 duration 필드)
+    _writeRegSingle(0x61, (uint8_t)(p_wakeDur & 0xFF));
+
+    // 2. BMI270 INT2 핀 매핑 (모션 감지 시 RISING)
+    _writeRegSingle(0x54, 0x04); // Map any-motion interrupt to INT2
+}
+
+// [신규] 딥슬립 복귀 레지스터 초기화
+void CL_T2_SensorEngine::restoreFromDeepSleepWakeup() {
+    if (!_isBmiInit) return;
+    ESP_LOGI(TAG, "Restoring BMI270 registers from sleep wakeup mode...");
+    // 1. Any-motion 기능 비활성화 및 설정 초기화
+    _writeRegSingle(0x5F, 0x00);
+    _writeRegSingle(0x60, 0x00);
+    // 2. 인터럽트 매핑을 원래의 FIFO Watermark (INT1 RISING) 구조로 원복
+    _writeRegSingle(0x53, 0x08); // Map FIFO watermark to INT1
+    _writeRegSingle(0x54, 0x00); // Unmap from INT2
+}
+
+// I2S DMA 제어
+void CL_T2_SensorEngine::stopI2SDma() {
+    if (_isI2sInit) {
+        i2s_stop((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST);
+    }
+}
+
+// I2S DMA 제어
+void CL_T2_SensorEngine::startI2SDma() {
+    if (_isI2sInit) {
+        clearAudioBuffer();
+        i2s_start((i2s_port_t)Audio::Hardware::I2S_PORT_NUM_CONST);
+    }
+}
+
+// 캘리브레이션 오프셋 동적 반영
+void CL_T2_SensorEngine::updateCalibrationOffsets(const float* p_offsets) {
+    if (p_offsets == nullptr) return;
+    // offsets 순서: Accel X/Y/Z, Gyro X/Y/Z
+    _accOffsetX = p_offsets[0];
+    _accOffsetY = p_offsets[1];
+    _accOffsetZ = p_offsets[2];
+    _gyrOffsetX = p_offsets[3];
+    _gyrOffsetY = p_offsets[4];
+    _gyrOffsetZ = p_offsets[5];
+    ESP_LOGI(TAG, "Calibration offsets hot-swapped.");
+}
+

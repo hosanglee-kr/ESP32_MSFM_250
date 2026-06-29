@@ -13,53 +13,58 @@
 #include "esp_sleep.h"
 #include <Arduino.h>
 
-void SafetyLifecycleManager::processManualReset() {
-    _is_alarm_latched = false;
-    std::atomic_thread_fence(std::memory_order_release);
-    asm volatile("memw"); // 멀티코어 메모리 배리어 동기화
-}
+static const char*              TAG             = "T290_FSM";
 
-static const char* TAG = "T290_FSM";
 
-static volatile TaskHandle_t g_isr_imu_task = nullptr;
+//bmi 워터마크 인터럽트 핸들러
+void IRAM_ATTR T2_90_IMU_watermark_isr() {
+// static void IRAM_ATTR T2_90_IMU_watermark_isr() {
 
-static void IRAM_ATTR T245_bmi_watermark_isr() {
-    BaseType_t woken = pdFALSE;
-    uint32_t ccount = esp_cpu_get_ccount();
-    static volatile uint32_t last_ccount = 0;
+	BaseType_t          v_woken       = pdFALSE;
+    uint32_t            v_ccount      = esp_cpu_get_ccount();
+    static volatile uint32_t v_last_ccount = 0;
 
     // 0.5ms 이하의 비정상 인터럽트 무시 (스로틀링)
-    if (ccount - last_ccount > 120000) {
-        if (g_isr_imu_task) {
-            vTaskNotifyGiveFromISR(g_isr_imu_task, &woken);
-            if (woken) portYIELD_FROM_ISR();
+    if (v_ccount - v_last_ccount > 120000) {
+        // 싱글톤 인스턴스가 존재하고 태스크 핸들이 유효하면 알림 전송
+        if (CL_T2_FsmManager::s_pInstance &&
+            CL_T2_FsmManager::s_pInstance->_hImuAcqTask) {
+            vTaskNotifyGiveFromISR(CL_T2_FsmManager::s_pInstance->_hImuAcqTask, &v_woken);
+            if (v_woken) portYIELD_FROM_ISR();
         }
-        last_ccount = ccount;
+
+        v_last_ccount = v_ccount;
     }
 }
 
 
 // 전역 인터페이스 함수들
-void T240_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
+
+// 시스템 커맨드 디스패처
+void T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
     CL_T2_FsmManager::getInstance().dispatchCommand(p_cmd);
 }
 
-uint8_t T240_GetCurrentState() {
+// 시스템 상태 조회
+uint8_t T2_90_Fsm_GetCurrentState() {
     return (uint8_t)CL_T2_FsmManager::getInstance().getState();
 }
 
-void T240_ReloadDspFilters() {
+// DSP 필터 리로드
+void T2_90_Fsm_ReloadDspFilters() {
     CL_T2_FsmManager::getInstance().reloadDspFilters();
 }
 
+// DSP 필터 리로드 구현
 void CL_T2_FsmManager::reloadDspFilters() {
     const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
     _dsp.reloadFilters(v_cfg);
 }
 
+
 CL_T2_FsmManager::CL_T2_FsmManager()
     : _sensor(SPI), _state(T2_Type::EM_SystemState_t::INIT) {
-    // T210_Def에 정의된 전역 안전 릴레이 핀 상수를 바인딩하여 하드코딩 제거
+
     _interlock = new PreemptiveSafetyInterlock(T2_Def::Global::Hardware::PIN_SAFETY_RELAY_CONST);
     _safetyManager = new SafetyLifecycleManager(*_interlock);
 }
@@ -79,24 +84,36 @@ CL_T2_FsmManager::~CL_T2_FsmManager() {
 }
 
 bool CL_T2_FsmManager::init() {
+
+    // RGB LED 초기화
     if (T2_Def::Global::Hardware::PIN_RGB_LED_CONST != T2_Def::Global::Hardware::PIN_NOT_SET_CONST) {
         neopixelWrite(T2_Def::Global::Hardware::PIN_RGB_LED_CONST, 32, 32, 0);
     }
     ESP_LOGI(TAG, "Initializing v247 Orchestrator...");
 
+    // 설정 관리자 초기화
     if (!CL_T2_ConfigManager::getInstance().init()) {
         ESP_LOGE(TAG, "ConfigManager Init Failed!");
         return false;
     }
+
+    // 설정값 로드
     const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
 
+    // 센서 초기화
     if (!_sensor.init(v_cfg.system, v_cfg.accel, v_cfg.gyro, v_cfg.audio)) return false;
+    // DSP 초기화
     if (!_dsp.init(v_cfg)) return false;
+    // 오디오 추출기 초기화
     if (!_extractor.init(v_cfg.audio)) return false;
+    // 저장소 초기화
     if (!_storage.init()) return false;
+    // 통신 초기화
     if (!_comm.init()) return false;
 
+    // 시퀀스 빌더 초기화
     _seqBuilder.init(T2_Def::Global::System::SEQUENCE_FRAMES_MAX, T2_Def::AI::Tensor::MFCC_DIM_MAX);
+    // 캘리브레이터에 추출기 바인딩
     _calibrator.bindExtractor(&_extractor);
 
     // 텔레메트리 패킷 등 통신 버퍼만 PSRAM 할당
@@ -107,33 +124,48 @@ bool CL_T2_FsmManager::init() {
     _pktSpec      = (T2_Type::ST_PktSpectrum_t*)heap_caps_aligned_alloc(16, sizeof(T2_Type::ST_PktSpectrum_t), MALLOC_CAP_SPIRAM);
     _pktSeq       = (T2_Type::ST_PktSequence_t*)heap_caps_aligned_alloc(16, sizeof(T2_Type::ST_PktSequence_t), MALLOC_CAP_SPIRAM);
 
+    // 텔레메트리 주기 설정
     _telemetryHz = v_cfg.system.tele_hz;
+    // 파형 생성 주기 설정
     _waveformHz  = v_cfg.system.wave_hz;
+    // 시퀀스 생성 주기 설정
     _sequenceHz  = 2;
 
     // 공유 메모리 컨텍스트 할당 및 초기화
     _sharedCtx = (T2_Type::ST_SharedContext_t*)heap_caps_aligned_alloc(16, sizeof(T2_Type::ST_SharedContext_t), MALLOC_CAP_SPIRAM);
     memset(_sharedCtx, 0, sizeof(T2_Type::ST_SharedContext_t));
+
+    // 진동 센서 인덱스 초기화
     _sharedCtx->vib_idx.store(0);
+    // 오디오 센서 인덱스 초기화
     _sharedCtx->aud_idx.store(0);
 
+    // 세션 명령 큐 생성
     _qSessionCmd = xQueueCreate(16, sizeof(uint8_t));
 
-    // 비동기 태스크 분리 생성
-    xTaskCreatePinnedToCore(_imuAcqTask,       "ImuAcq",  T2_Def::Global::Task::IMU_ACQ_STACK_SIZE,  this, T2_Def::Global::Task::IMU_ACQ_PRIORITY,  &_hImuAcqTask, T2_Def::Global::Task::CORE_CAPTURE_DEF);
-    xTaskCreatePinnedToCore(_audioProcessTask, "AudProc", T2_Def::Global::Task::AUD_PROC_STACK_SIZE, this, T2_Def::Global::Task::AUD_PROC_PRIORITY, &_hAudioTask,   T2_Def::Global::Task::CORE_PROCESS_DEF);
-    xTaskCreatePinnedToCore(_vibProcessTask,   "VibProc", T2_Def::Global::Task::VIB_PROC_STACK_SIZE, this, T2_Def::Global::Task::VIB_PROC_PRIORITY, &_hVibTask,     T2_Def::Global::Task::CORE_PROCESS_DEF);
+    // IMU 캡쳐 태스크 생성
+    xTaskCreatePinnedToCore(_imuAcqTask,       "ImuAcqTask",  T2_Def::Global::Task::IMU_ACQ_STACK_SIZE,  this, T2_Def::Global::Task::IMU_ACQ_PRIORITY,  &_hImuAcqTask, T2_Def::Global::Task::CORE_CAPTURE_DEF);
+    // 오디오 프로세싱 태스크 생성
+    xTaskCreatePinnedToCore(_audioProcessTask, "AudProcTask", T2_Def::Global::Task::AUD_PROC_STACK_SIZE, this, T2_Def::Global::Task::AUD_PROC_PRIORITY, &_hAudioTask,   T2_Def::Global::Task::CORE_PROCESS_DEF);
+    // 진동 프로세싱 태스크 생성
+    xTaskCreatePinnedToCore(_vibProcessTask,   "VibProcTask", T2_Def::Global::Task::VIB_PROC_STACK_SIZE, this, T2_Def::Global::Task::VIB_PROC_PRIORITY, &_hVibTask,     T2_Def::Global::Task::CORE_PROCESS_DEF);
 
+    // READY 상태로 전환
     setState(T2_Type::EM_SystemState_t::READY);
+
     ESP_LOGI(TAG, "v247 Orchestrator Ready with Async Pipeline.");
     return true;
 }
 
 
+// 시스템 상태 설정
 void CL_T2_FsmManager::setState(T2_Type::EM_SystemState_t p_newState) {
     portENTER_CRITICAL(&_stateMux);
     if (_state == p_newState) { portEXIT_CRITICAL(&_stateMux); return; }
+
+    // 이전 상태 저장
     T2_Type::EM_SystemState_t v_prevState = _state;
+    // 상태 변경
     _state = p_newState;
     portEXIT_CRITICAL(&_stateMux);
 
@@ -156,54 +188,77 @@ void CL_T2_FsmManager::setState(T2_Type::EM_SystemState_t p_newState) {
         neopixelWrite(T2_Def::Global::Hardware::PIN_RGB_LED_CONST, r, g, b);
     }
 
+    //READY 상태 진입 시 초기화 처리
     if (p_newState == T2_Type::EM_SystemState_t::READY) {
+        // 시작 시간 기록
         _lastTick = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+        // 현재 트라이얼 횟수 초기화
         _currentTrial = 0;
+        // 수동 녹음 플래그 초기화
         _isManualRecording = false;
 
-        // Cascade Clear
+        // DSP 상태 초기화
         _dsp.resetStates();
+        // 시퀀스 빌더 초기화
         _seqBuilder.reset();
+        // 트리거 카운터 초기화
         _trigger.resetCounter();
     }
+    //MAINTENANCE 상태 진입 시 처리
     else if (p_newState == T2_Type::EM_SystemState_t::MAINTENANCE) {
+        // 세션 닫기
         _storage.closeSession("ota_maintenance");
-        // 분리형 파이프라인 가공 태스크 일시 중단 처리 전환
+        // 가공 태스크 일시 중단
         if (_hAudioTask) vTaskSuspend(_hAudioTask);
         if (_hVibTask)   vTaskSuspend(_hVibTask);
+
         ESP_LOGW(TAG, "System entering MAINTENANCE mode. Bus isolated. Tasks suspended.");
     }
+    // MAINTENANCE 상태에서 다른 상태로 복귀 시 처리
     else if (p_newState == T2_Type::EM_SystemState_t::MONITORING || p_newState == T2_Type::EM_SystemState_t::RECORDING || p_newState == T2_Type::EM_SystemState_t::READY) {
+        // MAINTENANCE -> 다른 상태
         if (v_prevState == T2_Type::EM_SystemState_t::MAINTENANCE) {
-            // 분리형 파이프라인 가공 태스크 재개 처리 전환
+            // 가공 태스크 재개
             if (_hAudioTask) vTaskResume(_hAudioTask);
             if (_hVibTask)   vTaskResume(_hVibTask);
             ESP_LOGI(TAG, "Tasks resumed from MAINTENANCE.");
         }
+        // READY -> MONITORING 또는 RECORDING 상태로의 전환 시 초기화 처리
         if ((p_newState == T2_Type::EM_SystemState_t::MONITORING || p_newState == T2_Type::EM_SystemState_t::RECORDING) && v_prevState == T2_Type::EM_SystemState_t::READY) {
+            // DSP 상태 초기화
             _dsp.resetStates();
+            // 시퀀스 빌더 초기화
             _seqBuilder.reset();
+            // 트리거 카운터 초기화
             _trigger.resetCounter();
         }
     }
 }
 
 
+// 시스템 커맨드 처리
 void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
+    // MAINTENANCE 상태에서는 특정 커맨드만 허용
     if (_state == T2_Type::EM_SystemState_t::MAINTENANCE &&
         p_cmd != T2_Type::EM_SystemCommand_t::CMD_REBOOT &&
         p_cmd != T2_Type::EM_SystemCommand_t::CMD_OTA_END) return;
 
+    // 커맨드 출력
     ESP_LOGI(TAG, "Command Dispatched: %d", (uint8_t)p_cmd);
     uint8_t v_sessCmd = 0;
 
     switch (p_cmd) {
+        // START 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_START:
             setState(T2_Type::EM_SystemState_t::MONITORING);
             break;
+
+        // STOP 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_STOP:
             _stopReasonCmd = (uint8_t)T2_Type::EM_AsyncSessionCmd_t::CLOSE_NORMAL;
             break;
+
+        // 수동 녹음 시작 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_MANUAL_REC_START:
             if (_state == T2_Type::EM_SystemState_t::READY || _state == T2_Type::EM_SystemState_t::MONITORING) {
                 _isManualRecording = true;
@@ -212,15 +267,21 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
                 xQueueSend(_qSessionCmd, &v_sessCmd, 0);
             }
             break;
+
+        // 수동 녹음 종료 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_MANUAL_REC_STOP:
             if (_state == T2_Type::EM_SystemState_t::RECORDING && _isManualRecording) {
                 _isManualRecording = false;
                 _stopReasonCmd = (uint8_t)T2_Type::EM_AsyncSessionCmd_t::CLOSE_MANUAL;
             }
             break;
+
+        // 노이즈 학습 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_LEARN_NOISE:
             _extractor.setNoiseLearning(true);
             break;
+
+        // 캘리브레이션 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_CALIBRATE:
             if (_state == T2_Type::EM_SystemState_t::READY) {
                 setState(T2_Type::EM_SystemState_t::CALIBRATING);
@@ -228,6 +289,7 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
                 xQueueSend(_qSessionCmd, &v_sessCmd, 0);
             }
             break;
+        // 시스템 재부팅 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_REBOOT:
             _storage.closeSession("reboot");
             vTaskDelay(pdMS_TO_TICKS(500));
@@ -236,11 +298,15 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
         // OTA 상태 전이 명령
         case T2_Type::EM_SystemCommand_t::CMD_OTA_START:
             ESP_LOGW(TAG, "OTA Update Started. Entering MAINTENANCE mode.");
+            prepareForOta();
             setState(T2_Type::EM_SystemState_t::MAINTENANCE);
             break;
+
+        // OTA 종료 커맨드 처리
         case T2_Type::EM_SystemCommand_t::CMD_OTA_END:
             ESP_LOGI(TAG, "OTA Update Ended.");
             if (_state == T2_Type::EM_SystemState_t::MAINTENANCE) {
+                resumeFromOtaFailure();
                 setState(T2_Type::EM_SystemState_t::READY);
             }
             break;
@@ -250,6 +316,7 @@ void CL_T2_FsmManager::dispatchCommand(T2_Type::EM_SystemCommand_t p_cmd) {
 }
 
 
+// 오프라인 상태에서의 런 메서드 (세션 기반)
 void CL_T2_FsmManager::runMaintenance() {
     // 1. 비동기 종료 예약 명령 확인 및 처리 (추가된 부분)
     _checkGracefulClose();
@@ -271,15 +338,28 @@ void CL_T2_FsmManager::runMaintenance() {
         }
     }
 
+    // 지연 쓰기 확인
     CL_T2_ConfigManager::getInstance().checkLazyWrite();
+    // 통신 실행
     _comm.runNetwork();
 
-    if (_storage.hasIoError()) _storage.attemptRecovery();
+    // 저장 장치 오류 확인
+    if (_storage.hasIoError()) {
+        if (_state != T2_Type::EM_SystemState_t::ERROR) {
+            ESP_LOGE(TAG, "Storage physical IO error detected! Transiting to ERROR state.");
+            setState(T2_Type::EM_SystemState_t::ERROR);
+            // 실시간 텔레메트리 송출을 뮤팅하고 에러 보고 전송할 수 있는 준비 상태로 FSM 연동
+        }
+        // 복구 시도
+        _storage.attemptRecovery();
+    }
 
     // 유휴 상태 자동 교정 트리거 (audio.auto_idle_min 적용)
     if (_state == T2_Type::EM_SystemState_t::READY) {
+        // 시간 계산
         uint32_t v_nowSec = (uint32_t)(esp_timer_get_time() / 1000000ULL);
         const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
+        // 자동 교정 트리거
         if (v_cfg.audio.auto_idle_min > 0 && (v_nowSec - _lastTick > v_cfg.audio.auto_idle_min * 60)) {
             dispatchCommand(T2_Type::EM_SystemCommand_t::CMD_CALIBRATE);
             _lastTick = v_nowSec;
@@ -288,7 +368,10 @@ void CL_T2_FsmManager::runMaintenance() {
         // 유휴 상태 딥슬립 진입 트리거 (trig_use_sleep 및 trig_sleep_sec 적용)
         if (v_cfg.trig_use_sleep && v_cfg.trig_sleep_sec > 0 && (v_nowSec - _lastTick > v_cfg.trig_sleep_sec)) {
             ESP_LOGW(TAG, "Entering Deep Sleep... Idle for %u sec", (unsigned int)v_cfg.trig_sleep_sec);
+
+            // 세션 종료
             _storage.closeSession("deep_sleep");
+            // LED 끄기
             if (T2_Def::Global::Hardware::PIN_RGB_LED_CONST != T2_Def::Global::Hardware::PIN_NOT_SET_CONST) {
                 neopixelWrite(T2_Def::Global::Hardware::PIN_RGB_LED_CONST, 0, 0, 0); // LED 끄기
             }
@@ -302,6 +385,7 @@ void CL_T2_FsmManager::runMaintenance() {
             // 설비 충격 및 가동 시작 시 기기를 자동으로 잠에서 깨웁니다.
             esp_sleep_enable_ext1_wakeup(1ULL << T2_Def::Imu::Hardware::PIN_INT2_MOTION_CONST, ESP_EXT1_WAKEUP_ANY_HIGH);
 
+            // 딥슬립 진입
             esp_deep_sleep_start();
         }
     }
@@ -312,11 +396,14 @@ void CL_T2_FsmManager::runMaintenance() {
 // ============================================================================
 void CL_T2_FsmManager::_imuAcqTask(void* p_param) {
     CL_T2_FsmManager* v_this = (CL_T2_FsmManager*)p_param;
-    g_isr_imu_task = xTaskGetCurrentTaskHandle();
+
+    v_this->_hImuAcqTask = xTaskGetCurrentTaskHandle();
+    //// g_isr_imu_task = xTaskGetCurrentTaskHandle();
 
     // 초기 인터럽트 연결 (BMI270 Watermark RISING 엣지)
-    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T245_bmi_watermark_isr, RISING);
+    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T2_90_IMU_watermark_isr, RISING);
 
+    // 메인 루프
     while (v_this->_state != T2_Type::EM_SystemState_t::INIT) {
         // 하드웨어 인터럽트 대기
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -326,15 +413,17 @@ void CL_T2_FsmManager::_imuAcqTask(void* p_param) {
             // INT1 인터럽트 전송 원인이 실제 FIFO Watermark 비트가 맞는지 레지스터 교차 검증 (오동작 방지)
             uint8_t v_int_stat_1 = v_this->_sensor._readRegSingle(T2_Def::Imu::Hardware::REG_INT_STATUS_1_ADDR);
             if (v_int_stat_1 & T2_Def::Imu::Hardware::REG_FIFO_WTM_STATUS_BIT) {
+                // FIFO 누적
                 v_this->_sensor.accumulateFifo();
             }
         }
+        // WDT 리셋
         esp_task_wdt_reset();
     }
 
     // 종료 시 리소스 정리
     detachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST));
-    g_isr_imu_task = nullptr;
+    //// g_isr_imu_task = nullptr;
     v_this->_hImuAcqTask = nullptr;
     vTaskDelete(NULL);
 }
@@ -355,16 +444,17 @@ void CL_T2_FsmManager::_vibProcessTask(void* p_param) {
     float* v_gyr_proc_z = (float*)heap_caps_malloc(T2_Def::Gyro::Sensor::FFT_SIZE_MAX * sizeof(float), MALLOC_CAP_INTERNAL);
 
     while (v_this->_state != T2_Type::EM_SystemState_t::INIT) {
+        // 시스템 상태 확인
         if (v_this->_state == T2_Type::EM_SystemState_t::MONITORING ||
             v_this->_state == T2_Type::EM_SystemState_t::RECORDING ||
             v_this->_state == T2_Type::EM_SystemState_t::CALIBRATING) {
 
-            // 1. 수집된 IMU 프레임이 FFT 크기(1024)에 도달했는지 확인 (약 640ms 주기 달성)
+            // 수집된 IMU 프레임이 FFT 크기(1024)에 도달했는지 확인 (약 640ms 주기 달성)
             if (v_this->_sensor.getAccumulatedAccelCount() >= T2_Def::Accel::Sensor::FFT_SIZE_MAX) {
 
                 // 더블 버퍼링: 쓰기 인덱스 결정 (현재 인덱스 ^ 1)
-                uint8_t v_write_idx = v_this->_sharedCtx->vib_idx.load(std::memory_order_relaxed) ^ 1;
-                auto& v_slot = v_this->_sharedCtx->vib_slots[v_write_idx];
+                uint8_t    v_write_idx = v_this->_sharedCtx->vib_idx.load(std::memory_order_relaxed) ^ 1;
+                auto&      v_slot      = v_this->_sharedCtx->vib_slots[v_write_idx];
                 memset(&v_slot, 0, sizeof(T2_Type::ST_FeatureSlot_Vib_t)); // 패딩 영역 0 초기화
 
                 // 헤더 조립
@@ -379,18 +469,25 @@ void CL_T2_FsmManager::_vibProcessTask(void* p_param) {
                 v_this->_sensor.getAccumulatedAccel(v_acc_proc_x, v_acc_proc_y, v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX);
                 v_this->_sensor.getAccumulatedGyro(v_gyr_proc_x, v_gyr_proc_y, v_gyr_proc_z, T2_Def::Gyro::Sensor::FFT_SIZE_MAX);
 
-                // 3. DSP 가공 및 특징 추출
+                // 3. DSP 가공 및 특징 추출 
+
+                // 가속도 특징 추출
                 if (v_cfg.accel.enable) {
+                    // 가속도 DSP 처리 (평탄화, 윈도잉, FFT)
                     v_this->_dsp.processAccel(v_acc_proc_x, v_acc_proc_y, v_acc_proc_z, v_acc_proc_x, v_acc_proc_y, v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX, v_cfg.accel);
+                    // 가속도 특징 추출
                     v_this->_extractor.extractAccel(v_acc_proc_x, v_acc_proc_y, v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX, v_cfg.accel.sample_rate, v_slot, v_cfg.accel);
                 }
 
+                // 자이로 특징 추출
                 if (v_cfg.gyro.enable) {
+                    // 자이로 DSP 처리 (평탄화, 윈도잉, FFT)
                     v_this->_dsp.processGyro(v_gyr_proc_x, v_gyr_proc_y, v_gyr_proc_z, v_gyr_proc_x, v_gyr_proc_y, v_gyr_proc_z, T2_Def::Gyro::Sensor::FFT_SIZE_MAX, v_cfg.gyro);
+                    // 자이로 특징 추출
                     v_this->_extractor.extractGyro(v_gyr_proc_x, v_gyr_proc_y, v_gyr_proc_z, T2_Def::Gyro::Sensor::FFT_SIZE_MAX, v_cfg.gyro.sample_rate, v_slot, v_cfg.gyro);
                 }
 
-                // 글로벌 스트리밍 버퍼에 복사 스냅샷 생성 (웹소켓 전송용 동기화 캐시 스페이스 정합)
+                // [오디오 통합 로직 이관] 글로벌 스트리밍 버퍼에 복사 스냅샷 생성 (웹소켓 전송용 동기화 캐시 스페이스 정합)
                 if (v_this->_dsp.getAccBufX()) memcpy(v_this->_dsp.getAccBufX(), v_acc_proc_x, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
                 if (v_this->_dsp.getAccBufY()) memcpy(v_this->_dsp.getAccBufY(), v_acc_proc_y, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
                 if (v_this->_dsp.getAccBufZ()) memcpy(v_this->_dsp.getAccBufZ(), v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
@@ -401,23 +498,32 @@ void CL_T2_FsmManager::_vibProcessTask(void* p_param) {
                 // 4. 원자적 스왑: 오디오 태스크가 이제 무등급으로 읽어갈 수 있게 배포 장벽 해제
                 v_this->_sharedCtx->vib_idx.store(v_write_idx, std::memory_order_release);
 
-                // [Phase 4 완료] 진동 특징량 구조체 및 복사된 원시 정적 버퍼를 스토리지 비동기 엔진에 인입
+                // 진동 특징량 구조체 및 복사된 원시 정적 버퍼를 스토리지 비동기 엔진에 인입
                 T2_Type::ST_Raw_Accel_t v_tmpAcc;
+
+                // 가속도 원시 데이터 구조체 생성
                 v_tmpAcc.ts = v_slot.header.ts;
                 v_tmpAcc.sample_rate = v_cfg.accel.sample_rate;
                 v_tmpAcc.active_mask = v_slot.header.accel_mask;
+
+                // 가속도 원시 데이터 복사
                 memcpy(v_tmpAcc.data[0], v_acc_proc_x, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
                 memcpy(v_tmpAcc.data[1], v_acc_proc_y, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
                 memcpy(v_tmpAcc.data[2], v_acc_proc_z, T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float));
 
                 T2_Type::ST_Raw_Gyro_t v_tmpGyr;
+
+                // 자이로 원시 데이터 구조체 생성
                 v_tmpGyr.ts = v_slot.header.ts;
                 v_tmpGyr.sample_rate = v_cfg.gyro.sample_rate;
                 v_tmpGyr.active_mask = v_slot.header.gyro_mask;
+
+                // 자이로 원시 데이터 복사
                 memcpy(v_tmpGyr.data[0], v_gyr_proc_x, T2_Def::Gyro::Sensor::FFT_SIZE_MAX * sizeof(float));
                 memcpy(v_tmpGyr.data[1], v_gyr_proc_y, T2_Def::Gyro::Sensor::FFT_SIZE_MAX * sizeof(float));
                 memcpy(v_tmpGyr.data[2], v_gyr_proc_z, T2_Def::Gyro::Sensor::FFT_SIZE_MAX * sizeof(float));
 
+                // 진동 특징량 구조체 및 복사된 원시 정적 버퍼를 스토리지 비동기 엔진에 인입
                 v_this->_storage.pushVibFrame(&v_slot, &v_tmpAcc, &v_tmpGyr);
             }
         }
@@ -448,14 +554,17 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
     CL_T2_FsmManager* v_this = (CL_T2_FsmManager*)p_param;
     const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
 
+    // Audio 버퍼 포인터 획득 (Zero-Copy)
 	float* v_rawAudioL = v_this->_dsp.getCapBufL();
     float* v_rawAudioR = v_this->_dsp.getCapBufR();
 
+    // 가공 후 저장할 Audio 버퍼 포인터 획득
     float* v_outAudioL = v_this->_dsp.getPrcBufL();
     float* v_outAudioR = v_this->_dsp.getPrcBufR();
 
-
+    // 상태 루프
     while (v_this->_state != T2_Type::EM_SystemState_t::INIT) {
+        // 해당 상태에서만 오디오 처리
         if (v_this->_state == T2_Type::EM_SystemState_t::MONITORING ||
             v_this->_state == T2_Type::EM_SystemState_t::RECORDING ||
             v_this->_state == T2_Type::EM_SystemState_t::NOISE_LEARNING ||
@@ -464,10 +573,14 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
             // 1. 오디오 청크 수집 (Wait-free I2S DMA 인출)
             uint32_t v_samples = v_this->_sensor.readAudioChunk(v_rawAudioL, v_rawAudioR, T2_Def::Audio::Sensor::FFT_SIZE_MAX);
 
+            // 오디오 샘플이 수집되었을 경우
             if (v_samples > 0) {
+
                 // 더블 버퍼링: 쓰기 인덱스 결정
                 uint8_t v_write_idx = v_this->_sharedCtx->aud_idx.load(std::memory_order_relaxed) ^ 1;
                 auto&   v_aud_slot = v_this->_sharedCtx->aud_slots[v_write_idx];
+
+                // Audio 특징량 구조체 초기화
                 memset(&v_aud_slot, 0, sizeof(T2_Type::ST_FeatureSlot_Aud_t));
 
                 // 헤더 조립
@@ -476,14 +589,16 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
                 v_aud_slot.header.payload_type = (uint8_t)T2_Type::EM_DataPayloadType_t::AUDIO_ONLY;
                 v_aud_slot.header.audio_mask = v_cfg.audio.channel_mask;
 
-                // 2. 오디오 DSP 가공 및 특징 추출
+                // 오디오 DSP 가공
                 v_this->_dsp.processAudio(v_rawAudioL, v_rawAudioR, v_outAudioL, v_outAudioR, v_samples, v_cfg.audio);
+
+                // 오디오 특징 추출
                 v_this->_extractor.extractAudio(v_outAudioL, v_outAudioR, v_samples, v_cfg.audio.sample_rate, v_aud_slot, v_cfg.audio);
 
-                // 3. 원자적 스왑 (오디오 슬롯 갱신)
+                // 오디오 슬롯 갱신
                 v_this->_sharedCtx->aud_idx.store(v_write_idx, std::memory_order_release);
 
-                // 4. Late-Sync: 가장 최신 진동 슬롯을 Lock-free 인출
+                // 가장 최신 진동 슬롯을 Lock-free 인출
                 uint8_t v_vib_idx = v_this->_sharedCtx->vib_idx.load(std::memory_order_acquire);
                 const auto& v_vib_slot = v_this->_sharedCtx->vib_slots[v_vib_idx];
 
@@ -494,9 +609,11 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
                     v_this->_seqBuilder.pushVector(v_this->_flatTensor);
                 }
 
-                // [Phase 4 완료] 초고속 비동기 융합 판정 (Trigger) 연동 사양 정합
+                // 초고속 비동기 융합 판정 (Trigger)
                 if (v_this->_state == T2_Type::EM_SystemState_t::MONITORING || v_this->_state == T2_Type::EM_SystemState_t::RECORDING) {
+                    // 판정 결과
                     T2_Type::EM_DetectionResult_t v_res = v_this->_trigger.runDiagnostic(v_aud_slot, v_vib_slot, v_cfg);
+                    // 판정 결과 처리
                     v_this->_handleTriggerResult(v_res, v_aud_slot, v_vib_slot);
                 } else if (v_this->_state == T2_Type::EM_SystemState_t::CALIBRATING) {
                     // 캘리브레이션 세션 활성화 상태 시 무조건 밀어넣기 처리
@@ -506,10 +623,12 @@ void CL_T2_FsmManager::_audioProcessTask(void* p_param) {
                     v_tmpAud.active_mask = v_aud_slot.header.audio_mask;
                     memcpy(v_tmpAud.data[0], v_rawAudioL, T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float));
                     memcpy(v_tmpAud.data[1], v_rawAudioR, T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float));
+
+                    // 원본 저장
                     v_this->_storage.pushAudioFrame(&v_aud_slot, &v_tmpAud);
                 }
 
-                // [Phase 4 완료] 실시간 스트리밍 다중 파형 매핑 호출 전달 정합 완료
+                // 실시간 스트리밍 다중 파형 매핑
                 v_this->_broadcastStreams(v_aud_slot, v_vib_slot, v_rawAudioL, v_rawAudioR);
             }
         }
@@ -528,63 +647,35 @@ void CL_T2_FsmManager::_broadcastStreams(const T2_Type::ST_FeatureSlot_Aud_t& p_
                                          const float* p_rawAudL, const float* p_rawAudR) {
     const auto& v_cfg = CL_T2_ConfigManager::getInstance().getConfig();
 
-    // 1. Telemetry 패킷 매핑
+    // Telemetry 패킷 매핑 및 전송
     _accTele += _telemetryHz;
     if (_accTele >= 100) {
         _accTele -= 100;
-        _pktTele->header.magic  = 0xAA;
-        _pktTele->header.type   = (uint8_t)T2_Type::EM_StreamType_t::TELEMETRY;
-        _pktTele->header.len    = sizeof(T2_Type::ST_PktTelemetry_t) - sizeof(T2_Type::ST_WsHeader_t);
-        _pktTele->header.source = 0;
-        _pktTele->header.stage  = (uint8_t)_state;
-
-        _pktTele->sys_state      = (uint8_t)_state;
-        _pktTele->detect_result  = (uint8_t)p_audSlot.header.src; // 융합 트리거 결과 연동
-        _pktTele->trial_no       = p_audSlot.header.trial;
-        _pktTele->trigger_source = p_audSlot.header.src;
-
-        _pktTele->accel_mask     = p_vibSlot.header.accel_mask;
-        _pktTele->gyro_mask      = p_vibSlot.header.gyro_mask;
-        _pktTele->audio_mask     = p_audSlot.header.audio_mask;
-        _pktTele->payload_type   = (uint8_t)T2_Type::EM_DataPayloadType_t::VIB_AUDIO_BOTH;
-
-        _pktTele->accel_ts  = p_vibSlot.header.ts;
-        _pktTele->gyro_ts   = p_vibSlot.header.ts;
-        _pktTele->audio_ts  = p_audSlot.header.ts;
-        _pktTele->temp      = p_audSlot.header.temp;
-
-        // 가속도 16밴드 에너지 복사 (0번 축/대표 축 기준)
-        memcpy(_pktTele->accel_band_energy, p_vibSlot.accel.band_energy[0], sizeof(_pktTele->accel_band_energy));
-
-        // 자이로 하위 2개 저주파 밴드 복사 (0번 축/대표 축 기준)
-        _pktTele->gyro_rms_energy[0] = p_vibSlot.gyro.band_energy[0][0];
-        _pktTele->gyro_rms_energy[1] = p_vibSlot.gyro.band_energy[0][1];
-
-        // 오디오 1/3 옥타브 대역 복사
-        memcpy(_pktTele->audio_timbre_bands, p_audSlot.audio.timbre_bands, sizeof(_pktTele->audio_timbre_bands));
-
-        // 오디오 MFCC 계수 복사 (13차원)
-        memcpy(_pktTele->audio_mfcc, p_audSlot.mfcc, sizeof(_pktTele->audio_mfcc));
-
-        _comm.broadcastBinary(_pktTele, sizeof(T2_Type::ST_PktTelemetry_t));
+        // 텔레메트리 페이로드
+        broadcastTelemetryPayload(p_vibSlot, p_audSlot);
     }
 
-    // 2. Waveform 파형 전송 전처리
+    // Waveform 파형 전송 전처리
     _accWave += _waveformHz;
     if (_accWave >= 100) {
         _accWave -= 100;
 
+        // 오디오 파형
         if (v_cfg.audio.enable && p_rawAudL) {
+            // 오디오 파형
             _pktWaveAudio->header.magic  = 0xAA;
             _pktWaveAudio->header.type   = (uint8_t)T2_Type::EM_StreamType_t::WAVEFORM;
             _pktWaveAudio->header.source = 1; // Left Channel
             _pktWaveAudio->header.len    = T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float);
             memcpy(_pktWaveAudio->samples, p_rawAudL, _pktWaveAudio->header.len);
+            // 오디오 파형 실시간 스트리밍
             _comm.broadcastBinary(_pktWaveAudio, sizeof(T2_Type::ST_PktWaveformAudio_t));
 
+            // 오디오 우측 채널
             if ((v_cfg.audio.channel_mask & (uint8_t)T2_Type::EM_ChannelMask_t::CH_RIGHT) && p_rawAudR) {
                 _pktWaveAudio->header.source = 5; // Right Channel
                 memcpy(_pktWaveAudio->samples, p_rawAudR, _pktWaveAudio->header.len);
+                // 오디오 파형 실시간 스트리밍
                 _comm.broadcastBinary(_pktWaveAudio, sizeof(T2_Type::ST_PktWaveformAudio_t));
             }
         }
@@ -599,13 +690,14 @@ void CL_T2_FsmManager::_broadcastStreams(const T2_Type::ST_FeatureSlot_Aud_t& p_
                     _pktWaveAccel->header.len    = T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float);
                     float* v_srcBuf = (i == 0) ? _dsp.getAccBufX() : (i == 1) ? _dsp.getAccBufY() : _dsp.getAccBufZ();
                     memcpy(_pktWaveAccel->samples, v_srcBuf, _pktWaveAccel->header.len);
+                    // 관성 센서 파형 실시간 스트리밍
                     _comm.broadcastBinary(_pktWaveAccel, sizeof(T2_Type::ST_PktWaveformAccel_t));
                 }
             }
         }
     }
 
-    // 3. Spectrum 전송
+    // Spectrum 전송
     _accSpec += _spectrumHz;
     if (_accSpec >= 100) {
         _accSpec -= 100;
@@ -633,9 +725,8 @@ void CL_T2_FsmManager::_broadcastStreams(const T2_Type::ST_FeatureSlot_Aud_t& p_
     }
 }
 
+// 정상 종료 체크
 void CL_T2_FsmManager::_checkGracefulClose() {
-    // [보완] 더 이상 FSM 단의 가공 대기 큐(_qReadyIdx)를 확인할 필요가 없습니다.
-    // 비동기 파이프라인에서는 StorageManager가 자신의 큐를 100% 비운 뒤 알아서 파일을 닫습니다.
     if (_stopReasonCmd != 0) {
         uint8_t v_cmd = _stopReasonCmd;
 
@@ -652,7 +743,7 @@ void CL_T2_FsmManager::_checkGracefulClose() {
     }
 }
 
-
+// 트리거 결과 처리
 void CL_T2_FsmManager::_handleTriggerResult(T2_Type::EM_DetectionResult_t p_res,
                                             const T2_Type::ST_FeatureSlot_Aud_t& p_audSlot,
                                             const T2_Type::ST_FeatureSlot_Vib_t& p_vibSlot) {
@@ -662,50 +753,53 @@ void CL_T2_FsmManager::_handleTriggerResult(T2_Type::EM_DetectionResult_t p_res,
             _storage.openSession("auto_trigger");
         }
 
-        // --------------------------------------------------------
-        // 1. 오디오 원시 데이터 정적 구조체 메모리 복사 및 스토리지 비동기 인입
-        // --------------------------------------------------------
+        // 오디오 원시 데이터 정적 구조체 메모리 복사 및 스토리지 비동기 인입
         T2_Type::ST_Raw_Audio_t v_tmpAud;
         memset(&v_tmpAud, 0, sizeof(T2_Type::ST_Raw_Audio_t));
 
+        // 구조체 멤버 변수 설정
         v_tmpAud.ts = p_audSlot.header.ts;
         v_tmpAud.sample_rate = CL_T2_ConfigManager::getInstance().getConfig().audio.sample_rate;
         v_tmpAud.active_mask = p_audSlot.header.audio_mask;
 
-        // 안전 가드: 소스 버퍼 유효성 검사 후 정적 배열에 값 복사
+        // 메모리 복사
         size_t v_audBlockSize = T2_Def::Audio::Sensor::FFT_SIZE_MAX * sizeof(float);
         if (_dsp.getCapBufL()) memcpy(v_tmpAud.data[0], _dsp.getCapBufL(), v_audBlockSize);
         if (_dsp.getCapBufR()) memcpy(v_tmpAud.data[1], _dsp.getCapBufR(), v_audBlockSize);
 
+        // 오디오 프레임 저장
         _storage.pushAudioFrame(&p_audSlot, &v_tmpAud);
 
-
-        // --------------------------------------------------------
-        // 2. 진동 원시 데이터(가속도/자이로) 정적 구조체 메모리 복사 및 인입
-        // --------------------------------------------------------
+        // 진동 원시 데이터(가속도/자이로) 정적 구조체 메모리 복사 및 인입
         T2_Type::ST_Raw_Accel_t v_tmpAcc;
         memset(&v_tmpAcc, 0, sizeof(T2_Type::ST_Raw_Accel_t));
 
+        // 구조체 멤버 변수 설정
         v_tmpAcc.ts = p_vibSlot.header.ts;
         v_tmpAcc.sample_rate = CL_T2_ConfigManager::getInstance().getConfig().accel.sample_rate;
         v_tmpAcc.active_mask = p_vibSlot.header.accel_mask;
 
+        // 메모리 복사
         size_t v_vibBlockSize = T2_Def::Accel::Sensor::FFT_SIZE_MAX * sizeof(float);
         if (_dsp.getAccBufX()) memcpy(v_tmpAcc.data[0], _dsp.getAccBufX(), v_vibBlockSize);
         if (_dsp.getAccBufY()) memcpy(v_tmpAcc.data[1], _dsp.getAccBufY(), v_vibBlockSize);
         if (_dsp.getAccBufZ()) memcpy(v_tmpAcc.data[2], _dsp.getAccBufZ(), v_vibBlockSize);
 
+        // 자이로 원시 데이터 정적 구조체 메모리 복사 및 인입
         T2_Type::ST_Raw_Gyro_t v_tmpGyr;
         memset(&v_tmpGyr, 0, sizeof(T2_Type::ST_Raw_Gyro_t));
 
+        // 구조체 멤버 변수 설정
         v_tmpGyr.ts = p_vibSlot.header.ts;
         v_tmpGyr.sample_rate = CL_T2_ConfigManager::getInstance().getConfig().gyro.sample_rate;
         v_tmpGyr.active_mask = p_vibSlot.header.gyro_mask;
 
+        // 메모리 복사
         if (_dsp.getGyrBufX()) memcpy(v_tmpGyr.data[0], _dsp.getGyrBufX(), v_vibBlockSize);
         if (_dsp.getGyrBufY()) memcpy(v_tmpGyr.data[1], _dsp.getGyrBufY(), v_vibBlockSize);
         if (_dsp.getGyrBufZ()) memcpy(v_tmpGyr.data[2], _dsp.getGyrBufZ(), v_vibBlockSize);
 
+        // 진동 프레임 저장
         _storage.pushVibFrame(&p_vibSlot, &v_tmpAcc, &v_tmpGyr);
     }
 
@@ -713,13 +807,92 @@ void CL_T2_FsmManager::_handleTriggerResult(T2_Type::EM_DetectionResult_t p_res,
     _comm.publishResultMqtt(p_audSlot, p_vibSlot, p_res);
 }
 
+// 수동 리셋 처리
 void CL_T2_FsmManager::processManualReset() {
+    // 안전 관리자 처리
     if (_safetyManager) {
-        _safetyManager->processManualReset();
+        _safetyManager->processManualReset(true );
     }
+
+    // 하드웨어 차단 해제
     if (_interlock) {
         _interlock->clearEmergencyLatch();
     }
+
+    // 상태 초기화
     setState(T2_Type::EM_SystemState_t::READY);
 }
 
+// OTA 준비
+void CL_T2_FsmManager::prepareForOta() {
+    ESP_LOGW(TAG, "Suspending sensor interrupts and DMA for OTA flash write...");
+    // 1. 센서 Watermark 인터럽트 분리
+    detachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST));
+    // 2. I2S DMA 일시 중단
+    _sensor.stopI2SDma();
+    // 3. 가공 스레드/태스크 일시 중단
+    if (_hAudioTask) vTaskSuspend(_hAudioTask);
+    if (_hVibTask)   vTaskSuspend(_hVibTask);
+}
+
+// OTA 복구
+void CL_T2_FsmManager::resumeFromOtaFailure() {
+    ESP_LOGW(TAG, "OTA failure or ended. Resuming sensor processing pipeline...");
+
+    // 센서 인터럽트 복구 및 재매핑
+    attachInterrupt(digitalPinToInterrupt(T2_Def::Imu::Hardware::PIN_INT1_WATERMARK_CONST), T2_90_IMU_watermark_isr, RISING);
+
+    // I2S DMA 재가동
+    _sensor.startI2SDma();
+
+    // 가공 태스크 Resume
+    if (_hAudioTask) vTaskResume(_hAudioTask);
+    if (_hVibTask)   vTaskResume(_hVibTask);
+}
+
+// 텔레메트리 데이터 발행
+void CL_T2_FsmManager::broadcastTelemetryPayload(const T2_Type::ST_FeatureSlot_Vib_t& p_vib, const T2_Type::ST_FeatureSlot_Aud_t& p_aud) {
+    if (!_comm.hasActiveWebsockets()) return;
+
+    // 16바이트 정렬을 만족하도록 alignas 선언
+    alignas(16) T2_Type::ST_PktTelemetry_t v_pkt;
+    memset(&v_pkt, 0, sizeof(v_pkt));
+
+    // 패킷 헤더 설정
+    v_pkt.header.magic       = 0xAA;
+    v_pkt.header.type        = (uint8_t)T2_Type::EM_StreamType_t::TELEMETRY;
+    v_pkt.header.len         = sizeof(T2_Type::ST_PktTelemetry_t) - sizeof(T2_Type::ST_WsHeader_t);
+    v_pkt.header.stage       = (uint8_t)_state;
+    v_pkt.header.source      = 0;
+
+    // 텔레메트리 페이로드 설정
+    v_pkt.sys_state          = (uint8_t)_state;
+    v_pkt.detect_result      = (uint8_t)p_aud.header.src; // 융합 판정 결과 바인딩
+    v_pkt.trial_no           = p_aud.header.trial;
+    v_pkt.trigger_source     = p_aud.header.src;
+
+    // 센서 데이터 마스크 설정
+    // 센서 데이터 마스크 설정
+    v_pkt.accel_mask         = p_vib.header.accel_mask;
+    v_pkt.gyro_mask          = p_vib.header.gyro_mask;
+    v_pkt.audio_mask         = p_aud.header.audio_mask;
+    v_pkt.payload_type       = (uint8_t)T2_Type::EM_DataPayloadType_t::VIB_AUDIO_BOTH;
+
+    // 센서 데이터 타임스탬프 설정
+    v_pkt.accel_ts           = p_vib.header.ts;
+    v_pkt.gyro_ts            = p_vib.header.ts;
+    v_pkt.audio_ts           = p_aud.header.ts;
+    v_pkt.temp               = p_aud.header.temp;
+
+    // 특징량 복사 및 구조체 패킹 (Zero-Copy 16B aligned 복사 준수)
+    std::copy(p_vib.accel.band_energy[0], p_vib.accel.band_energy[0] + 16, v_pkt.accel_band_energy);
+    v_pkt.gyro_rms_energy[0] = p_vib.gyro.band_energy[0][0];
+    v_pkt.gyro_rms_energy[1] = p_vib.gyro.band_energy[0][1];
+    std::copy(p_aud.audio.timbre_bands, p_aud.audio.timbre_bands + 32, v_pkt.audio_timbre_bands);
+    std::copy(p_aud.mfcc, p_aud.mfcc + 13, v_pkt.audio_mfcc);
+
+    _comm.broadcastBinary(reinterpret_cast<uint8_t*>(&v_pkt), sizeof(v_pkt));
+}
+
+// 전역 스코프에서 정적맴버 초기화
+CL_T2_FsmManager* CL_T2_FsmManager::s_pInstance = nullptr;

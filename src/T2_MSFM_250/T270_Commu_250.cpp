@@ -12,8 +12,8 @@
 #include "esp_log.h"
 
 // FSM 매니저 연동 인터페이스
-extern void T240_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd);
-extern uint8_t T240_GetCurrentState();
+extern void T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t p_cmd);
+extern uint8_t T2_90_Fsm_GetCurrentState();
 
 static const char* TAG = "T270_COMM";
 
@@ -95,7 +95,8 @@ bool CL_T2_Communicator::init() {
 
         _mqttHandle = esp_mqtt_client_init(&v_mqttCfg);
         esp_mqtt_client_register_event(_mqttHandle, (esp_mqtt_event_id_t)MQTT_EVENT_ANY, _mqttEventHandler, this);
-        esp_mqtt_client_start(_mqttHandle);
+        // [수정] NTP 동기가 완료될 때까지 MQTT 기동 유보 (runNetwork에서 체크하여 시작)
+        // esp_mqtt_client_start(_mqttHandle);
     }
 
     _initWebHandlers(); // 웹서버 핸들러 초기화 누락 방지
@@ -125,7 +126,7 @@ void CL_T2_Communicator::_initWebHandlers() {
     // 상태 조회
     _server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest* p_req) {
         JsonDocument v_doc;
-        v_doc["state"] = T240_GetCurrentState();
+        v_doc["state"] = T2_90_Fsm_GetCurrentState();
         v_doc["heap"] = ESP.getFreeHeap();
         v_doc["psram"] = ESP.getFreePsram();
         v_doc["wifi_rssi"] = WiFi.RSSI();
@@ -139,7 +140,7 @@ void CL_T2_Communicator::_initWebHandlers() {
     _server.on("/api/command", HTTP_POST, [](AsyncWebServerRequest* p_req) {
         if (!p_req->hasParam("cmd", true)) { p_req->send(400); return; }
         uint8_t v_cmd = p_req->getParam("cmd", true)->value().toInt();
-        T240_DispatchCommand((T2_Type::EM_SystemCommand_t)v_cmd);
+        T2_90_Fsm_DispatchCommand((T2_Type::EM_SystemCommand_t)v_cmd);
         p_req->send(200, "application/json", "{\"ok\":true}");
     });
 
@@ -189,7 +190,7 @@ void CL_T2_Communicator::_initWebHandlers() {
         p_req->send(v_res);
 
         // OTA 종료 후 시스템 정상화 또는 재부팅
-        T240_DispatchCommand(T2_Type::EM_SystemCommand_t::CMD_OTA_END);
+        T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t::CMD_OTA_END);
         if (!Update.hasError()) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             esp_restart();
@@ -197,7 +198,7 @@ void CL_T2_Communicator::_initWebHandlers() {
     }, [](AsyncWebServerRequest *p_req, String p_filename, size_t p_index, uint8_t *p_data, size_t p_len, bool p_final) {
         if (p_index == 0) {
             ESP_LOGI(TAG, "OTA Start: %s", p_filename.c_str());
-            T240_DispatchCommand(T2_Type::EM_SystemCommand_t::CMD_OTA_START);
+            T2_90_Fsm_DispatchCommand(T2_Type::EM_SystemCommand_t::CMD_OTA_START);
             if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
         }
         if (Update.write(p_data, p_len) != p_len) Update.printError(Serial);
@@ -277,6 +278,19 @@ bool CL_T2_Communicator::publishResultMqtt(const T2_Type::ST_FeatureSlot_Aud_t& 
     return true;
 }
 
+void CL_T2_Communicator::recreateMqttClient(const esp_mqtt_client_config_t& p_newCfg) {
+    if (_mqttHandle) {
+        esp_mqtt_client_stop(_mqttHandle);
+        esp_mqtt_client_destroy(_mqttHandle);
+        _mqttHandle = nullptr;
+    }
+    _mqttHandle = esp_mqtt_client_init(&p_newCfg);
+    if (_mqttHandle) {
+        esp_mqtt_client_register_event(_mqttHandle, (esp_mqtt_event_id_t)MQTT_EVENT_ANY, _mqttEventHandler, this);
+        // esp_mqtt_client_start는 runNetwork에서 시간 동기 완료 후 수행
+    }
+}
+
 void CL_T2_Communicator::runNetwork() {
     _ws.cleanupClients();
 
@@ -285,6 +299,19 @@ void CL_T2_Communicator::runNetwork() {
         if (millis() - _lastWifiRetryMs > 10000) {
             WiFi.reconnect();
             _lastWifiRetryMs = millis();
+        }
+    } else if (WiFi.status() == WL_CONNECTED) {
+        // [신규] NTP 동기 완료 시점 감지 및 MQTT 핸들 기동 (TLS 데드락 예방 가드)
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo, 0)) {
+            if (timeinfo.tm_year > 120 && _mqttHandle) { // 2020년 이후로 동기화 완료 판정
+                static bool s_mqttStarted = false;
+                if (!s_mqttStarted) {
+                    ESP_LOGI(TAG, "NTP sync complete. Starting MQTT secure client...");
+                    esp_mqtt_client_start(_mqttHandle);
+                    s_mqttStarted = true;
+                }
+            }
         }
     }
 }
@@ -302,7 +329,7 @@ void CL_T2_Communicator::_mqttEventHandler(void* p_handlerArgs, esp_event_base_t
             if (strncmp(v_event->topic, "smea/t240/cmd", v_event->topic_len) == 0) {
                 // 원격 명령 파싱 (단순 숫자로 가정)
                 uint8_t v_cmd = atoi(v_event->data);
-                T240_DispatchCommand((T2_Type::EM_SystemCommand_t)v_cmd);
+                T2_90_Fsm_DispatchCommand((T2_Type::EM_SystemCommand_t)v_cmd);
             }
             break;
         default: break;
